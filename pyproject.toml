@@ -1,0 +1,20 @@
+[project]
+name = "cnki-mcp"
+version = "0.1.0"
+description = "MCP server and CLI for CNKI search and metadata"
+readme = "README.md"
+keywords = ["cnki", "mcp", "cli", "academic", "papers", "metadata"]
+authors = [
+    { name = "SongTan", email = "sepinetam@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.28.1",
+]
+
+[project.scripts]
+cnki-mcp = "cnki_mcp:main"
+
+[build-system]
+requires = ["uv_build>=0.11.13,<0.12.0"]
+build-backend = "uv_build"
