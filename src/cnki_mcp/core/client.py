@@ -21,7 +21,7 @@ from .auth import (
 from .config import AUTH_TIMEOUT_SECONDS
 from .models import Article, AuthState, LoginResult, SearchFilters, SearchResult
 from .retrieval.models import CnkiQuery, MetadataLookupResult
-from .tools import metadata, metadata_lookup, search
+from .tools import basic_search, metadata, metadata_lookup, search
 
 
 class CnkiClient:
@@ -132,6 +132,26 @@ class CnkiClient:
         """
         self._ensure_login()
         return metadata.run(article_id, profile=self._profile)
+
+    def search_basic(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        sort_by: str | None = None,
+        filters: SearchFilters | None = None,
+        **kwargs: Any,
+    ) -> list[SearchResult]:
+        """Search CNKI through the one-box search page."""
+        self._ensure_login()
+        return basic_search.run(
+            query,
+            profile=self._profile,
+            limit=limit,
+            sort_by=sort_by,
+            filters=filters,
+            **kwargs,
+        )
 
     def lookup_metadata(
         self,

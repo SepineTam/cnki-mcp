@@ -7,14 +7,14 @@
 # @Email  : sepinetam@gmail.com
 # @File   : tests/cli/test_cli.py
 
-"""Tests for the cnki-mcp CLI."""
+"""Tests for the unified cnki-mcp CLI."""
 
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cnki_mcp.cli.main import _build_parser, _format_output, main
+from cnki_mcp.cli.main import _format_output, main
 from cnki_mcp.core.exceptions import CnkiMcpError
 from cnki_mcp.core.models import Article, AuthState, LoginResult, SearchResult
 from cnki_mcp.core.retrieval.models import MetadataLookupResult
@@ -22,59 +22,160 @@ from cnki_mcp.core.retrieval.models import MetadataLookupResult
 
 def test_format_output_json() -> None:
     """JSON output contains the input data."""
-    s = _format_output({"title": "Example"}, "json")
-    assert '"title": "Example"' in s
+    output = _format_output({"title": "Example"}, "json")
+    assert '"title": "Example"' in output
 
 
 def test_format_output_text() -> None:
     """Text output stringifies the data."""
-    s = _format_output({"title": "Example"}, "text")
-    assert "Example" in s
+    assert "Example" in _format_output({"title": "Example"}, "text")
 
 
 def test_format_output_unsupported() -> None:
-    """Unsupported format raises ValueError."""
+    """Unsupported output formats are rejected."""
     with pytest.raises(ValueError):
         _format_output({}, "xml")
 
 
-def test_search_help_includes_professional_search_guide(capsys) -> None:
-    """Search help explains CNKI fields and expression examples."""
-    parser = _build_parser()
-
+def test_help_uses_unified_program_name(capsys) -> None:
+    """Top-level help describes the one public executable."""
     with pytest.raises(SystemExit) as exc_info:
-        parser.parse_args(["search", "--help"])
+        main(["--help"])
 
     assert exc_info.value.code == 0
     help_text = capsys.readouterr().out
-    assert "SU=主题" in help_text
-    assert "TI=篇名" in help_text
-    assert "AU=作者" in help_text
-    assert "TI='生态'" in help_text
-    assert "FT='环境保护'" in help_text
+    assert "usage: cnki-mcp" in help_text
+    assert "serve" in help_text
+    assert "tool" in help_text
+    assert "login" in help_text
+    assert "logout" in help_text
+
+
+def test_version_is_available_without_starting_server(capsys) -> None:
+    """Both short and long version flags print and exit immediately."""
+    for option in ("-v", "--version"):
+        with pytest.raises(SystemExit) as exc_info:
+            main([option])
+        assert exc_info.value.code == 0
+        assert "cnki-mcp" in capsys.readouterr().out
+
+
+@patch("cnki_mcp.cli.main.ensure_login", create=True)
+@patch("cnki_mcp.cli.main.mcp_server", create=True)
+def test_no_arguments_start_default_http_server(
+    mock_server: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """Bare cnki-mcp starts HTTP on the documented default address."""
+    assert main([]) == 0
+
+    mock_ensure_login.assert_called_once_with(profile=None)
+    assert mock_server.settings.host == "127.0.0.1"
+    assert mock_server.settings.port == 7788
+    mock_server.run.assert_called_once_with(transport="streamable-http")
+
+
+@patch("cnki_mcp.cli.main.ensure_login", create=True)
+@patch("cnki_mcp.cli.main.mcp_server", create=True)
+def test_serve_maps_public_http_name_to_fastmcp_transport(
+    mock_server: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """The public http name maps to FastMCP streamable HTTP."""
+    code = main(
+        [
+            "serve",
+            "--transport",
+            "http",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9000",
+        ]
+    )
+
+    assert code == 0
+    mock_ensure_login.assert_called_once_with(profile=None)
+    assert mock_server.settings.host == "0.0.0.0"
+    assert mock_server.settings.port == 9000
+    mock_server.run.assert_called_once_with(transport="streamable-http")
+
+
+@patch("cnki_mcp.cli.main.ensure_login", create=True)
+@patch("cnki_mcp.cli.main.mcp_server", create=True)
+def test_sse_warns_and_starts(
+    mock_server: MagicMock,
+    mock_ensure_login: MagicMock,
+    capsys,
+) -> None:
+    """SSE stays available but recommends HTTP on stderr."""
+    assert main(["serve", "--transport", "sse"]) == 0
+
+    assert "HTTP" in capsys.readouterr().err
+    mock_server.run.assert_called_once_with(transport="sse")
+
+
+@patch("cnki_mcp.cli.main.ensure_login", create=True)
+@patch("cnki_mcp.cli.main.mcp_server", create=True)
+def test_stdio_starts_only_when_explicitly_selected(
+    mock_server: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """Stdio is available only through the explicit serve option."""
+    assert main(["serve", "--transport", "stdio"]) == 0
+    mock_server.run.assert_called_once_with(transport="stdio")
+
+
+@patch("cnki_mcp.cli.main.ensure_login", create=True)
+@patch("cnki_mcp.cli.main.mcp_server", create=True)
+def test_server_keyboard_interrupt_exits_cleanly(
+    mock_server: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """Ctrl+C stops a running server without exposing a traceback."""
+    mock_server.run.side_effect = KeyboardInterrupt
+
+    assert main(["serve"]) == 0
+
+
+@pytest.mark.parametrize("option", ["--host", "--port"])
+def test_stdio_rejects_network_options(option: str) -> None:
+    """Host and port have no meaning for stdio and are rejected."""
+    value = "127.0.0.1" if option == "--host" else "7788"
+    with pytest.raises(SystemExit) as exc_info:
+        main(["serve", "--transport", "stdio", option, value])
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize("command", [["login"], ["logout"], ["tool", "search", "T"]])
+def test_network_options_belong_only_to_serve(command: list[str]) -> None:
+    """Other command branches do not accept server network options."""
+    with pytest.raises(SystemExit) as exc_info:
+        main([*command, "--host", "127.0.0.1"])
+    assert exc_info.value.code == 2
 
 
 @patch("cnki_mcp.cli.main.CnkiClient")
-def test_search_subcommand_calls_client(
+def test_tool_search_uses_one_box_by_default(
     mock_client_cls: MagicMock,
     capsys,
 ) -> None:
-    """search invokes client.search and prints JSON."""
-    mock_client = mock_client_cls.return_value
-    mock_client.search.return_value = [
+    """A positional search query uses the one-box search operation."""
+    client = mock_client_cls.return_value
+    client.search_basic.return_value = [
         SearchResult(
             article_id="id1",
             title="Title 1",
             authors=["Author 1"],
             source="Journal 1",
             date="2026-02-25",
-        ),
+        )
     ]
-    code = main(["search", "劳动经济学", "--limit", "5"])
-    assert code == 0
-    mock_client.search.assert_called_once_with("劳动经济学", limit=5)
-    payload = json.loads(capsys.readouterr().out)
-    assert payload == [
+
+    assert main(["tool", "search", "劳动经济学", "--limit", "5"]) == 0
+
+    client.search_basic.assert_called_once_with("劳动经济学", limit=5)
+    assert json.loads(capsys.readouterr().out) == [
         {
             "title": "Title 1",
             "authors": ["Author 1"],
@@ -85,14 +186,28 @@ def test_search_subcommand_calls_client(
 
 
 @patch("cnki_mcp.cli.main.CnkiClient")
-def test_search_subcommand_passes_filters(mock_client_cls: MagicMock) -> None:
-    """search forwards filter options to client.search."""
-    mock_client = mock_client_cls.return_value
-    mock_client.search.return_value = [
-        SearchResult(article_id="id1", title="Title 1"),
-    ]
+def test_tool_search_advanced_uses_professional_search(
+    mock_client_cls: MagicMock,
+) -> None:
+    """The advanced option sends a professional expression unchanged."""
+    client = mock_client_cls.return_value
+    client.search.return_value = []
+
+    assert main(["tool", "search", "--advanced", "TI='生态'"]) == 0
+
+    client.search.assert_called_once_with("TI='生态'", limit=10)
+    client.search_basic.assert_not_called()
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+def test_tool_search_passes_shared_filters(mock_client_cls: MagicMock) -> None:
+    """Basic search receives the supported filters and ordering options."""
+    client = mock_client_cls.return_value
+    client.search_basic.return_value = []
+
     code = main(
         [
+            "tool",
             "search",
             "人工智能",
             "--year-from",
@@ -101,6 +216,8 @@ def test_search_subcommand_passes_filters(mock_client_cls: MagicMock) -> None:
             "2026",
             "--journal",
             "图书馆论坛",
+            "--author",
+            "张三",
             "--document-type",
             "journal",
             "--source-type",
@@ -109,40 +226,58 @@ def test_search_subcommand_passes_filters(mock_client_cls: MagicMock) -> None:
             "date",
         ]
     )
+
     assert code == 0
-    mock_client.search.assert_called_once_with(
+    client.search_basic.assert_called_once_with(
         "人工智能",
         limit=10,
         sort_by="date",
         year_from=2025,
         year_to=2026,
         journal="图书馆论坛",
+        author="张三",
         document_type="journal",
         source_types=["CSSCI"],
     )
 
 
-@patch("cnki_mcp.cli.main.CnkiClient")
-def test_metadata_subcommand_calls_client(mock_client_cls: MagicMock) -> None:
-    """metadata invokes client.get_metadata and prints JSON."""
-    mock_client = mock_client_cls.return_value
-    mock_client.get_metadata.return_value = Article(
-        article_id="aid",
-        title="Article Title",
-    )
-    code = main(["metadata", "aid"])
-    assert code == 0
-    mock_client.get_metadata.assert_called_once_with("aid")
+def test_tool_search_requires_exactly_one_query_mode() -> None:
+    """Basic text and an advanced expression cannot be mixed or omitted."""
+    with pytest.raises(SystemExit):
+        main(["tool", "search"])
+    with pytest.raises(SystemExit):
+        main(["tool", "search", "生态", "--advanced", "TI='生态'"])
 
 
 @patch("cnki_mcp.cli.main.CnkiClient")
-def test_lookup_metadata_subcommand_calls_client(mock_client_cls: MagicMock) -> None:
-    """lookup-metadata forwards structured citation fields."""
-    mock_client = mock_client_cls.return_value
-    mock_client.lookup_metadata.return_value = MetadataLookupResult()
+def test_tool_info_url_parses_directly(
+    mock_client_cls: MagicMock,
+    capsys,
+) -> None:
+    """A CNKI URL is sent directly to the detail parser workflow."""
+    url = "https://kns.cnki.net/kcms2/article/abstract?v=abc"
+    client = mock_client_cls.return_value
+    client.get_metadata.return_value = Article(article_id=url, title="文章")
+
+    assert main(["tool", "info", url]) == 0
+
+    client.get_metadata.assert_called_once_with(url)
+    assert json.loads(capsys.readouterr().out)["title"] == "文章"
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+def test_tool_info_title_resolves_then_parses(
+    mock_client_cls: MagicMock,
+) -> None:
+    """Citation fields use the lookup workflow through the same info command."""
+    client = mock_client_cls.return_value
+    client.lookup_metadata.return_value = MetadataLookupResult()
+
     code = main(
         [
-            "lookup-metadata",
+            "tool",
+            "info",
+            "--title",
             "无心插柳",
             "--author",
             "袁晓燕",
@@ -150,7 +285,7 @@ def test_lookup_metadata_subcommand_calls_client(mock_client_cls: MagicMock) -> 
             "翁士汉",
             "--year",
             "2024",
-            "--source",
+            "--journal",
             "世界经济文汇",
             "--limit",
             "20",
@@ -158,7 +293,7 @@ def test_lookup_metadata_subcommand_calls_client(mock_client_cls: MagicMock) -> 
     )
 
     assert code == 0
-    mock_client.lookup_metadata.assert_called_once_with(
+    client.lookup_metadata.assert_called_once_with(
         "无心插柳",
         authors=["袁晓燕", "翁士汉"],
         year=2024,
@@ -168,53 +303,59 @@ def test_lookup_metadata_subcommand_calls_client(mock_client_cls: MagicMock) -> 
     )
 
 
+def test_tool_info_requires_url_or_title_but_not_both() -> None:
+    """Info input modes are mutually exclusive."""
+    with pytest.raises(SystemExit):
+        main(["tool", "info"])
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "tool",
+                "info",
+                "https://kns.cnki.net/example",
+                "--title",
+                "文章",
+            ]
+        )
+
+
+def test_tool_info_url_rejects_citation_options() -> None:
+    """Direct URL parsing does not silently ignore citation fields."""
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "tool",
+                "info",
+                "https://kns.cnki.net/example",
+                "--author",
+                "张三",
+            ]
+        )
+
+
 @patch("cnki_mcp.cli.main.CnkiClient")
-def test_login_subcommand_calls_client(mock_client_cls: MagicMock) -> None:
-    """login invokes client.login and prints JSON."""
-    mock_client = mock_client_cls.return_value
-    mock_client.login.return_value = LoginResult(
+def test_login_and_logout_accept_profile(mock_client_cls: MagicMock) -> None:
+    """Profile selection remains available for login and logout."""
+    client = mock_client_cls.return_value
+    client.login.return_value = LoginResult(
         success=True,
         message="ok",
-        auth_state=AuthState(is_logged_in=True, profile="profile1"),
+        auth_state=AuthState(is_logged_in=True, profile="school"),
     )
-    code = main(["login", "--profile", "profile1"])
-    assert code == 0
-    mock_client_cls.assert_called_once_with(profile="profile1")
-    mock_client.login.assert_called_once()
+    client.current_profile = "school"
+
+    assert main(["login", "--profile", "school"]) == 0
+    mock_client_cls.assert_called_with(profile="school")
+    client.login.assert_called_once()
+
+    assert main(["logout", "--profile", "school"]) == 0
+    client.logout.assert_called_once()
 
 
 @patch("cnki_mcp.cli.main.CnkiClient")
-def test_logout_subcommand_calls_client(mock_client_cls: MagicMock) -> None:
-    """logout invokes client.logout and prints JSON."""
-    mock_client = mock_client_cls.return_value
-    mock_client.current_profile = "profile1"
-    code = main(["logout", "--profile", "profile1"])
-    assert code == 0
-    mock_client.logout.assert_called_once()
+def test_cnki_error_returns_nonzero(mock_client_cls: MagicMock) -> None:
+    """CNKI errors produce a non-zero command exit code."""
+    client = mock_client_cls.return_value
+    client.search_basic.side_effect = CnkiMcpError("boom")
 
-
-@patch("cnki_mcp.cli.main.CnkiClient")
-def test_profile_passthrough(mock_client_cls: MagicMock) -> None:
-    """--profile is forwarded to CnkiClient."""
-    main(["search", "query", "--profile", "profile2"])
-    mock_client_cls.assert_called_once_with(profile="profile2")
-
-
-@patch("cnki_mcp.cli.main.CnkiClient")
-def test_output_json_format(mock_client_cls: MagicMock, capsys) -> None:
-    """--output json prints valid JSON."""
-    mock_client = mock_client_cls.return_value
-    mock_client.search.return_value = [SearchResult(article_id="id", title="T")]
-    main(["search", "query", "--output", "json"])
-    captured = capsys.readouterr()
-    data = json.loads(captured.out)
-    assert isinstance(data, list)
-
-
-@patch("cnki_mcp.cli.main.CnkiClient")
-def test_error_returns_nonzero(mock_client_cls: MagicMock) -> None:
-    """CnkiMcpError causes a non-zero exit code."""
-    mock_client = mock_client_cls.return_value
-    mock_client.search.side_effect = CnkiMcpError("boom")
-    code = main(["search", "query"])
-    assert code != 0
+    assert main(["tool", "search", "query"]) != 0

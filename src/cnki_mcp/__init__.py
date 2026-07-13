@@ -9,10 +9,10 @@ except PackageNotFoundError:
 
 
 def main() -> None:
-    """Start the CNKI MCP server."""
-    from .server.cnki_mcp_server import mcp_server
+    """Run the unified cnki-mcp command-line interface."""
+    from .cli.main import main as cli_main
 
-    mcp_server.run()
+    raise SystemExit(cli_main())
 
 
 __all__ = ["CnkiClient", "__version__", "main"]

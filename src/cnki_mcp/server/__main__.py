@@ -7,9 +7,9 @@
 # @Email  : sepinetam@gmail.com
 # @File   : server/__main__.py
 
-"""Command-line entry point for the MCP server."""
+"""Module entry point for the default HTTP MCP server."""
 
-from .cnki_mcp_server import mcp_server
+from ..cli.main import main
 
 if __name__ == "__main__":
-    mcp_server.run()
+    raise SystemExit(main(["serve"]))

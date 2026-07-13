@@ -10,6 +10,7 @@
 """Authentication and profile state management for CNKI sessions."""
 
 import json
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -208,7 +209,10 @@ def login(
                 wait_until="networkidle",
                 timeout=config.PAGE_LOAD_TIMEOUT_SECONDS * 1000,
             )
-            print("请在弹出的浏览器窗口中完成学校/机构认证，完成后将自动保存登录状态。")
+            print(
+                "请在弹出的浏览器窗口中完成学校/机构认证，完成后将自动保存登录状态。",
+                file=sys.stderr,
+            )
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < timeout:

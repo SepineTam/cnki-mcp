@@ -94,6 +94,29 @@ def test_search_forwards_filter_kwargs(
 
 
 @patch("cnki_mcp.core.client.ensure_login")
+@patch("cnki_mcp.core.client.basic_search.run")
+def test_search_basic_uses_one_box_tool(
+    mock_basic_search: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """The explicit basic-search facade uses the one-box operation."""
+    mock_basic_search.return_value = [SearchResult(article_id="id", title="T")]
+    client = CnkiClient(profile="profile1")
+
+    results = client.search_basic("数字经济", limit=5, sort_by="date")
+
+    mock_ensure_login.assert_called_once()
+    mock_basic_search.assert_called_once_with(
+        "数字经济",
+        profile="profile1",
+        limit=5,
+        sort_by="date",
+        filters=None,
+    )
+    assert results == mock_basic_search.return_value
+
+
+@patch("cnki_mcp.core.client.ensure_login")
 @patch("cnki_mcp.core.client.metadata.run")
 def test_get_metadata_ensures_login_and_calls_tool(
     mock_metadata: MagicMock,

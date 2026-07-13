@@ -48,7 +48,7 @@ CLI 和 MCP 的搜索结果保持精简，每条记录只有四项：
 ```
 
 `date` 优先使用完整的 `yyyy-mm-dd`，知网页面只提供年份时则返回 `yyyy`。
-搜索结果用于浏览和筛选，摘要、关键词、DOI 等详细信息由 metadata 工具返回。
+搜索结果用于浏览和筛选，摘要、关键词、DOI 等详细信息由 `info` 命令返回。
 
 ## 可检索字段
 
@@ -91,18 +91,45 @@ CF=被引频次
 
 ## CLI
 
-检索式作为一个完整参数传入：
+项目只提供一个 `cnki-mcp` 命令。直接运行会启动默认 HTTP MCP Server：
 
 ```bash
-uv run cnki-mcp-cli search "TI='生态' and KY='生态文明'"
-uv run cnki-mcp-cli search "TI='生态'" --sort-by date
+uv run cnki-mcp
+uv run cnki-mcp serve --transport http --host 127.0.0.1 --port 7788
 ```
 
-运行下面的命令可以直接查看字段和示例：
+默认地址为 `127.0.0.1:7788`。也可以明确选择 SSE 或 stdio：
 
 ```bash
-uv run cnki-mcp-cli search --help
+uv run cnki-mcp serve --transport sse
+uv run cnki-mcp serve --transport stdio
 ```
+
+SSE 启动时会提示优先使用 HTTP。stdio 不接受 `--host` 和 `--port`。
+
+普通文字默认使用一框式检索，专业检索式通过 `--advanced` 传入：
+
+```bash
+uv run cnki-mcp tool search "数字经济"
+uv run cnki-mcp tool search --advanced "TI='生态' and KY='生态文明'"
+```
+
+直接解析知网详情页，或通过已知题录信息定位文章：
+
+```bash
+uv run cnki-mcp tool info "https://kns.cnki.net/kcms2/article/abstract?v=..."
+uv run cnki-mcp tool info --title "无心插柳" --author "袁晓燕" --year 2024
+```
+
+登录与退出可以指定 profile：
+
+```bash
+uv run cnki-mcp login --profile school
+uv run cnki-mcp logout --profile school
+```
+
+使用 `cnki-mcp --help`、`cnki-mcp --version` 或具体子命令的 `--help`
+查看帮助。
 
 ## MCP 工具
 
@@ -131,9 +158,9 @@ with CnkiClient(profile="profile1") as client:
     )
 ```
 
-CLI、Python API 和 MCP 使用相同的字段名称：`title`、`authors`、`year`、
-`source`、`document_type` 和 `limit`。CLI 使用 `--author` 表示单个作者，可重复
-传入；`--journal` 作为 `--source` 的兼容别名保留。
+CLI 的 `tool info` 使用 `--title`、`--author`、`--year`、`--source`、
+`--document-type` 和 `--limit`。`--author` 可重复传入；`--journal` 作为
+`--source` 的兼容别名保留。
 
 回查先使用知网专业检索并进行候选评分。详情页读取失败时，会自动尝试知网参考
 文献导出数据。无法可靠区分多个候选时会返回候选列表，不会自动猜测。

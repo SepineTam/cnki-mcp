@@ -11,6 +11,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 import cnki_mcp
 from cnki_mcp import CnkiClient
 
@@ -32,8 +34,11 @@ def test_package_main_is_callable() -> None:
     assert callable(cnki_mcp.main)
 
 
-def test_main_runs_mcp_server() -> None:
-    """main delegates to mcp_server.run."""
-    with patch("cnki_mcp.server.cnki_mcp_server.mcp_server") as mock_server:
-        cnki_mcp.main()
-    mock_server.run.assert_called_once()
+def test_main_delegates_to_unified_cli() -> None:
+    """The package entry point delegates to the unified CLI."""
+    with patch("cnki_mcp.cli.main.main", return_value=7) as mock_cli_main:
+        with pytest.raises(SystemExit) as exc_info:
+            cnki_mcp.main()
+
+    assert exc_info.value.code == 7
+    mock_cli_main.assert_called_once_with()

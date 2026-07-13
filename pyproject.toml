@@ -21,7 +21,6 @@ dev = [
 
 [project.scripts]
 cnki-mcp = "cnki_mcp:main"
-cnki-mcp-cli = "cnki_mcp.cli.main:main"
 
 [tool.ruff]
 line-length = 88

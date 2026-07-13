@@ -7,32 +7,41 @@
 # @Email  : sepinetam@gmail.com
 # @File   : cli/main.py
 
-"""Command-line interface for cnki-mcp."""
+"""Unified command-line interface for cnki-mcp."""
 
 import argparse
 import json
 import sys
 from dataclasses import asdict
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
+from urllib.parse import urlparse
 
+from ..core.auth import ensure_login
 from ..core.client import CnkiClient
 from ..core.exceptions import CnkiMcpError
 from ..core.tools.professional_search import PROFESSIONAL_SEARCH_GUIDE
+from ..server.cnki_mcp_server import mcp_server
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 7788
+TRANSPORT_MAP = {
+    "http": "streamable-http",
+    "sse": "sse",
+    "stdio": "stdio",
+}
+
+
+def _package_version() -> str:
+    """Return the installed package version with a source-tree fallback."""
+    try:
+        return version("cnki-mcp")
+    except PackageNotFoundError:
+        return "0.1.0"
 
 
 def _format_output(data: Any, output_format: str) -> str:
-    """Format command output for stdout.
-
-    Args:
-        data: Data to format.
-        output_format: Either "json" or "text".
-
-    Returns:
-        Formatted string.
-
-    Raises:
-        ValueError: If the output format is not supported.
-    """
+    """Format command output for stdout."""
     if output_format == "json":
         return json.dumps(data, ensure_ascii=False, indent=2)
     if output_format == "text":
@@ -40,17 +49,14 @@ def _format_output(data: Any, output_format: str) -> str:
     raise ValueError(f"unsupported output format: {output_format!r}")
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    """Build the CLI argument parser."""
-    # Options with defaults for the top-level parser.
-    global_parser = argparse.ArgumentParser(add_help=False)
-    global_parser.add_argument(
-        "--profile",
-        "-p",
-        default=None,
-        help="Profile name",
-    )
-    global_parser.add_argument(
+def _add_profile_option(parser: argparse.ArgumentParser) -> None:
+    """Add the shared profile option to a command parser."""
+    parser.add_argument("--profile", "-p", default=None, help="Profile name")
+
+
+def _add_output_option(parser: argparse.ArgumentParser) -> None:
+    """Add the shared output option to a tool parser."""
+    parser.add_argument(
         "--output",
         "-o",
         choices=["json", "text"],
@@ -58,192 +64,229 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format",
     )
 
-    # Same options but suppressed defaults so subparsers do not overwrite
-    # values already parsed by the top-level parser when options appear
-    # before the subcommand.
-    sub_parser = argparse.ArgumentParser(add_help=False)
-    sub_parser.add_argument(
-        "--profile",
-        "-p",
-        default=argparse.SUPPRESS,
-        help="Profile name",
-    )
-    sub_parser.add_argument(
-        "--output",
-        "-o",
-        choices=["json", "text"],
-        default=argparse.SUPPRESS,
-        help="Output format",
-    )
 
-    parser = argparse.ArgumentParser(
-        prog="cnki-mcp-cli",
-        description="CNKI MCP command-line interface",
-        parents=[global_parser],
-    )
-
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    search_parser = subparsers.add_parser(
-        "search",
-        help="Search CNKI",
-        parents=[sub_parser],
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=PROFESSIONAL_SEARCH_GUIDE,
-    )
-    search_parser.add_argument(
-        "query",
-        help="CNKI professional expression, or a plain article title",
-    )
-    search_parser.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Maximum results",
-    )
-    search_parser.add_argument(
+def _add_search_filters(parser: argparse.ArgumentParser) -> None:
+    """Add shared search filters and result options."""
+    parser.add_argument("--limit", type=int, default=10, help="Maximum results")
+    parser.add_argument(
         "--sort-by",
         choices=["relevance", "date", "citation", "comprehensive"],
         default=None,
-        help="Sort results by relevance, date, citation, or comprehensive score",
+        help="Sort by relevance, date, citation, or comprehensive score",
     )
-    search_parser.add_argument(
-        "--year-from",
-        type=int,
-        default=None,
-        help="Start publication year",
-    )
-    search_parser.add_argument(
-        "--year-to",
-        type=int,
-        default=None,
-        help="End publication year",
-    )
-    search_parser.add_argument(
-        "--journal",
-        default=None,
-        help="Journal or source title",
-    )
-    search_parser.add_argument(
-        "--document-type",
-        default=None,
-        help="Resource type such as journal, conference, dissertation, or newspaper",
-    )
-    search_parser.add_argument(
+    parser.add_argument("--year-from", type=int, default=None)
+    parser.add_argument("--year-to", type=int, default=None)
+    parser.add_argument("--journal", default=None, help="Journal or source title")
+    parser.add_argument("--document-type", default=None)
+    parser.add_argument(
         "--source-type",
         action="append",
         dest="source_types",
         default=None,
         help="Source category such as CSSCI, SCI, EI, CSCD, AMI, or 北大核心",
     )
-    search_parser.add_argument(
-        "--author",
-        default=None,
-        help="Author filter",
-    )
-    search_parser.add_argument(
-        "--institution",
-        default=None,
-        help="Author institution filter",
-    )
+    parser.add_argument("--author", default=None, help="Author filter")
+    parser.add_argument("--institution", default=None, help="Institution filter")
 
-    metadata_parser = subparsers.add_parser(
-        "metadata",
-        help="Fetch article metadata",
-        parents=[sub_parser],
-    )
-    metadata_parser.add_argument("article_id", help="Article identifier")
 
-    lookup_parser = subparsers.add_parser(
-        "lookup-metadata",
-        help="Resolve metadata from known citation fields",
-        parents=[sub_parser],
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the unified cnki-mcp argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="cnki-mcp",
+        description="CNKI MCP server and command-line tools",
     )
-    lookup_parser.add_argument("title", help="Article title")
-    lookup_parser.add_argument(
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {_package_version()}",
+    )
+    commands = parser.add_subparsers(dest="command")
+
+    serve_parser = commands.add_parser("serve", help="Start the MCP server")
+    serve_parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "http"],
+        default="http",
+    )
+    serve_parser.add_argument("--host", default=DEFAULT_HOST)
+    serve_parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+
+    login_parser = commands.add_parser("login", help="Log in to CNKI")
+    _add_profile_option(login_parser)
+    _add_output_option(login_parser)
+
+    logout_parser = commands.add_parser("logout", help="Log out from CNKI")
+    _add_profile_option(logout_parser)
+    _add_output_option(logout_parser)
+
+    tool_parser = commands.add_parser("tool", help="Run a CNKI tool")
+    tools = tool_parser.add_subparsers(dest="tool_command", required=True)
+
+    search_parser = tools.add_parser(
+        "search",
+        help="Search CNKI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=PROFESSIONAL_SEARCH_GUIDE,
+    )
+    search_parser.add_argument("query", nargs="?", help="One-box search text")
+    search_parser.add_argument(
+        "--advanced",
+        metavar="EXPRESSION",
+        default=None,
+        help="CNKI professional-search expression",
+    )
+    _add_profile_option(search_parser)
+    _add_output_option(search_parser)
+    _add_search_filters(search_parser)
+
+    info_parser = tools.add_parser("info", help="Get detailed article information")
+    info_parser.add_argument("url", nargs="?", help="CNKI article detail URL")
+    info_parser.add_argument("--title", default=None, help="Article title")
+    info_parser.add_argument(
         "--author",
         action="append",
         dest="authors",
         default=None,
         help="Article author; repeat for multiple authors",
     )
-    lookup_parser.add_argument("--year", type=int, default=None)
-    lookup_parser.add_argument(
+    info_parser.add_argument("--year", type=int, default=None)
+    info_parser.add_argument(
         "--source",
         "--journal",
         dest="source",
         default=None,
         help="Article source or journal title",
     )
-    lookup_parser.add_argument("--document-type", default=None)
-    lookup_parser.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Maximum candidates",
-    )
-
-    subparsers.add_parser(
-        "login",
-        help="Log in to CNKI",
-        parents=[sub_parser],
-    )
-    subparsers.add_parser(
-        "logout",
-        help="Log out from CNKI",
-        parents=[sub_parser],
-    )
+    info_parser.add_argument("--document-type", default=None)
+    info_parser.add_argument("--limit", type=int, default=10)
+    _add_profile_option(info_parser)
+    _add_output_option(info_parser)
 
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the cnki-mcp CLI.
+def _option_was_supplied(raw_args: list[str], option: str) -> bool:
+    """Return whether an option appears explicitly in raw arguments."""
+    return any(value == option or value.startswith(f"{option}=") for value in raw_args)
 
-    Args:
-        argv: Optional command-line arguments.
 
-    Returns:
-        Exit code.
-    """
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+def _validate_serve_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    raw_args: list[str],
+) -> None:
+    """Reject network-only options when stdio is selected."""
+    if args.transport != "stdio":
+        return
+    if _option_was_supplied(raw_args, "--host") or _option_was_supplied(
+        raw_args, "--port"
+    ):
+        parser.error("--host and --port are not allowed with stdio transport")
 
+
+def _configure_server(host: str, port: int) -> None:
+    """Configure FastMCP network settings before the application is built."""
+    mcp_server.settings.host = host
+    mcp_server.settings.port = port
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        mcp_server.settings.transport_security = None
+
+
+def _run_server(transport: str, host: str, port: int) -> int:
+    """Ensure login and run the selected MCP transport."""
+    ensure_login(profile=None)
+    _configure_server(host, port)
+    if transport == "sse":
+        print("提示：SSE 可以使用，但建议优先选择 HTTP。", file=sys.stderr)
+    try:
+        mcp_server.run(transport=TRANSPORT_MAP[transport])
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
+def _search_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    """Collect explicitly configured search options."""
+    kwargs: dict[str, Any] = {"limit": args.limit}
+    if args.sort_by:
+        kwargs["sort_by"] = args.sort_by
+    for key in (
+        "year_from",
+        "year_to",
+        "journal",
+        "document_type",
+        "source_types",
+        "author",
+        "institution",
+    ):
+        value = getattr(args, key)
+        if value:
+            kwargs[key] = value
+    return kwargs
+
+
+def _run_search(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Any:
+    """Run one-box or professional search according to the selected input."""
+    if bool(args.query) == bool(args.advanced):
+        parser.error("provide either one-box query text or --advanced expression")
     client = CnkiClient(profile=args.profile)
+    kwargs = _search_kwargs(args)
+    if args.advanced:
+        results = client.search(args.advanced, **kwargs)
+    else:
+        results = client.search_basic(args.query, **kwargs)
+    return [result.to_public_dict() for result in results]
+
+
+def _is_cnki_url(value: str) -> bool:
+    """Return whether a value is an absolute CNKI HTTP URL."""
+    parsed = urlparse(value)
+    hostname = (parsed.hostname or "").casefold()
+    return parsed.scheme in {"http", "https"} and hostname.endswith("cnki.net")
+
+
+def _run_info(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Any:
+    """Parse a detail URL or locate an article from citation fields."""
+    if bool(args.url) == bool(args.title):
+        parser.error("provide either a CNKI URL or --title")
+    client = CnkiClient(profile=args.profile)
+    if args.url:
+        if any((args.authors, args.year, args.source, args.document_type)):
+            parser.error("citation options cannot be combined with a direct URL")
+        if not _is_cnki_url(args.url):
+            parser.error("info URL must be an absolute cnki.net URL")
+        return asdict(client.get_metadata(args.url))
+    result = client.lookup_metadata(
+        args.title,
+        authors=args.authors,
+        year=args.year,
+        source=args.source,
+        document_type=args.document_type,
+        limit=args.limit,
+    )
+    return asdict(result)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the unified cnki-mcp CLI."""
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    parser = _build_parser()
+    args = parser.parse_args(raw_args)
+
+    if args.command is None:
+        return _run_server("http", DEFAULT_HOST, DEFAULT_PORT)
+    if args.command == "serve":
+        _validate_serve_args(parser, args, raw_args)
+        return _run_server(args.transport, args.host, args.port)
 
     try:
-        if args.command == "search":
-            search_kwargs: dict[str, Any] = {"limit": args.limit}
-            if args.sort_by:
-                search_kwargs["sort_by"] = args.sort_by
-            for key in [
-                "year_from",
-                "year_to",
-                "journal",
-                "document_type",
-                "source_types",
-                "author",
-                "institution",
-            ]:
-                value = getattr(args, key)
-                if value:
-                    search_kwargs[key] = value
-            results = client.search(args.query, **search_kwargs)
-            data = [result.to_public_dict() for result in results]
-        elif args.command == "metadata":
-            article = client.get_metadata(args.article_id)
-            data = article.__dict__
-        elif args.command == "lookup-metadata":
-            result = client.lookup_metadata(
-                args.title,
-                authors=args.authors,
-                year=args.year,
-                source=args.source,
-                document_type=args.document_type,
-                limit=args.limit,
-            )
-            data = asdict(result)
+        if args.command == "tool" and args.tool_command == "search":
+            data = _run_search(parser, args)
+        elif args.command == "tool" and args.tool_command == "info":
+            data = _run_info(parser, args)
         elif args.command == "login":
+            client = CnkiClient(profile=args.profile)
             result = client.login()
             data = {
                 "success": result.success,
@@ -251,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
                 "profile": result.auth_state.profile,
             }
         elif args.command == "logout":
+            client = CnkiClient(profile=args.profile)
             client.logout()
             data = {
                 "success": True,
@@ -258,8 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                 "profile": client.current_profile,
             }
         else:
-            parser.print_help()
-            return 1
+            parser.error("unknown command")
     except CnkiMcpError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
