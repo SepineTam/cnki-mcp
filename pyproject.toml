@@ -10,10 +10,41 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.28.1",
+    "playwright>=1.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.12.0",
 ]
 
 [project.scripts]
 cnki-mcp = "cnki_mcp:main"
+cnki-mcp-cli = "cnki_mcp.cli.main:main"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "UP",
+]
+ignore = [
+    "UP009",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cnki_mcp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["uv_build>=0.11.13,<0.12.0"]
