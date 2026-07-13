@@ -19,8 +19,9 @@ from .auth import (
     refresh_login,
 )
 from .config import AUTH_TIMEOUT_SECONDS
-from .models import Article, AuthState, LoginResult, SearchResult
-from .tools import metadata, search
+from .models import Article, AuthState, LoginResult, SearchFilters, SearchResult
+from .retrieval.models import CnkiQuery, MetadataLookupResult
+from .tools import metadata, metadata_lookup, search
 
 
 class CnkiClient:
@@ -76,20 +77,49 @@ class CnkiClient:
         query: str,
         *,
         limit: int = 10,
+        sort_by: str | None = None,
+        filters: SearchFilters | None = None,
         **kwargs: Any,
     ) -> list[SearchResult]:
         """Search CNKI and return parsed results.
 
+        Professional fields:
+        SU=主题, TKA=篇关摘, KY=关键词, TI=篇名, FT=全文, AU=作者,
+        FI=第一作者, RP=通讯作者, AF=作者单位, FU=基金, AB=摘要,
+        CO=小标题, RF=参考文献, CLC=分类号, LY=文献来源, DOI=DOI,
+        CF=被引频次.
+
+        Examples:
+            ``TI='生态' and KY='生态文明' and (AU % '陈' + '王')``
+            检索篇名包括“生态”、关键词包括“生态文明”，且作者为“陈”姓或
+            “王”姓的文章。
+
+            ``SU='北京' * '奥运' and FT='环境保护'``
+            检索主题同时包括“北京”和“奥运”，且全文包括“环境保护”的信息。
+
+            ``SU=('经济发展' + '可持续发展') * '转变' - '泡沫'``
+            检索相关“转变”信息，并排除“泡沫”。
+
         Args:
-            query: Search query string.
+            query: Professional expression or a plain article title.
             limit: Maximum number of results to return.
+            sort_by: Result order: relevance, date, citation, or comprehensive.
+            filters: Optional grouped search filters.
             **kwargs: Additional search options forwarded to the search tool.
 
         Returns:
-            List of search results.
+            Search results whose public fields are title, authors, journal,
+            and publication date.
         """
         self._ensure_login()
-        return search.run(query, profile=self._profile, limit=limit, **kwargs)
+        return search.run(
+            query,
+            profile=self._profile,
+            limit=limit,
+            sort_by=sort_by,
+            filters=filters,
+            **kwargs,
+        )
 
     def get_metadata(self, article_id: str) -> Article:
         """Fetch metadata for a CNKI article.
@@ -102,6 +132,43 @@ class CnkiClient:
         """
         self._ensure_login()
         return metadata.run(article_id, profile=self._profile)
+
+    def lookup_metadata(
+        self,
+        title: str,
+        *,
+        authors: list[str] | None = None,
+        year: int | None = None,
+        source: str | None = None,
+        document_type: str | None = None,
+        limit: int = 10,
+    ) -> MetadataLookupResult:
+        """Resolve complete metadata from known citation fields.
+
+        Args:
+            title: Article title.
+            authors: Optional complete author list.
+            year: Optional publication year.
+            source: Optional source or journal title.
+            document_type: Optional document type.
+            limit: Maximum number of search candidates.
+
+        Returns:
+            Lookup result with the selected article and ranked candidates.
+        """
+        self._ensure_login()
+        query = CnkiQuery(
+            title=title,
+            authors=list(authors or []),
+            year=year,
+            source=source,
+            document_type=document_type,
+        )
+        return metadata_lookup.lookup(
+            query,
+            profile=self._profile,
+            limit=limit,
+        )
 
     def __enter__(self) -> "CnkiClient":
         """Enter the client context manager."""

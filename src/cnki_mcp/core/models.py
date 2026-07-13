@@ -40,9 +40,55 @@ class SearchResult:
     title: str
     authors: list[str] = field(default_factory=list)
     year: int | None = None
+    date: str | None = None
     source: str | None = None
     url: str | None = None
     citation_count: int | None = None
+    filename: str | None = None
+    dbcode: str | None = None
+    dbname: str | None = None
+    export_id: str | None = None
+
+    @property
+    def journal(self) -> str | None:
+        """Return the publication source using the public field name."""
+        return self.source
+
+    def to_public_dict(self) -> dict[str, object]:
+        """Return the intentionally small public search-result shape."""
+        return {
+            "title": self.title,
+            "authors": list(self.authors),
+            "journal": self.journal,
+            "date": self.date,
+        }
+
+
+@dataclass
+class SearchFilters:
+    """Represents optional filters applied to a CNKI search."""
+
+    year_from: int | None = None
+    year_to: int | None = None
+    journal: str | None = None
+    document_type: str | None = None
+    source_types: list[str] = field(default_factory=list)
+    author: str | None = None
+    institution: str | None = None
+
+    def is_empty(self) -> bool:
+        """Return whether no filter is configured."""
+        return not any(
+            [
+                self.year_from,
+                self.year_to,
+                self.journal,
+                self.document_type,
+                self.source_types,
+                self.author,
+                self.institution,
+            ]
+        )
 
 
 @dataclass
@@ -57,6 +103,9 @@ class Article:
     keywords: list[str] | None = None
     year: int | None = None
     source: str | None = None
+    volume: str | None = None
+    issue: str | None = None
+    pages: str | None = None
     doi: str | None = None
     url: str | None = None
     download_url: str | None = None
@@ -66,5 +115,6 @@ __all__ = [
     "AuthState",
     "LoginResult",
     "SearchResult",
+    "SearchFilters",
     "Article",
 ]

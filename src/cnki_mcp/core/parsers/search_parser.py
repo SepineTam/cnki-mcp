@@ -76,6 +76,15 @@ FIELD_SELECTORS: dict[str, list[str]] = {
         "[data-citation]",
         ".citations",
     ],
+    "identifier": [
+        "td.operat [data-filename]",
+        "[data-filename]",
+        "input[name='filename']",
+    ],
+    "export_id": [
+        "td.seq input[name='CookieName']",
+        "input[name='CookieName']",
+    ],
 }
 
 
@@ -85,6 +94,18 @@ def _parse_citation_count(text: str | None) -> int | None:
         return None
     match = re.search(r"\d+", text)
     return int(match.group()) if match else None
+
+
+def _parse_publication_date(text: str | None) -> str | None:
+    """Extract a normalized publication date when one is available."""
+    if text is None:
+        return None
+    match = re.search(r"(?<!\d)(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?", text)
+    if match:
+        year, month, day = (int(value) for value in match.groups())
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", text)
+    return year_match.group(1) if year_match else None
 
 
 def _extract_article_id_from_url(url: str | None) -> str | None:
@@ -206,20 +227,32 @@ def _parse_result_item(item: Any, selectors: dict[str, list[str]]) -> SearchResu
 
     year_text = _get_first_text(item, selectors["year"])
     year = _parse_citation_count(year_text)
+    publication_date = _parse_publication_date(year_text)
 
     source = _get_first_text(item, selectors["source"])
 
     citation_text = _get_first_text(item, selectors["citation_count"])
     citation_count = _parse_citation_count(citation_text)
+    filename = _get_attr(item, selectors["identifier"], "data-filename")
+    if filename is None:
+        filename = _get_attr(item, selectors["identifier"], "value")
+    dbcode = _get_attr(item, selectors["identifier"], "data-dbcode")
+    dbname = _get_attr(item, selectors["identifier"], "data-dbname")
+    export_id = _get_attr(item, selectors["export_id"], "value")
 
     return SearchResult(
         article_id=article_id,
         title=title,
         authors=authors,
         year=year,
+        date=publication_date,
         source=source,
         url=url,
         citation_count=citation_count,
+        filename=filename,
+        dbcode=dbcode,
+        dbname=dbname,
+        export_id=export_id,
     )
 
 
