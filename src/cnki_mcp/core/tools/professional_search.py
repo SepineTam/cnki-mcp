@@ -171,6 +171,40 @@ def _build_clause(field: str, value: str) -> str:
     raise SearchError("search terms cannot contain both quote types")
 
 
+def build_structured_expression(
+    *,
+    title: str | None = None,
+    author: str | None = None,
+    journal: str | None = None,
+    keywords: str | None = None,
+    subject: str | None = None,
+    abstract: str | None = None,
+    institution: str | None = None,
+    fund: str | None = None,
+    doi: str | None = None,
+) -> str:
+    """Build a professional expression from public advanced-search fields."""
+    fields = (
+        ("TI", title),
+        ("AU", author),
+        ("LY", journal),
+        ("KY", keywords),
+        ("SU", subject),
+        ("AB", abstract),
+        ("AF", institution),
+        ("FU", fund),
+        ("DOI", doi),
+    )
+    clauses = [
+        _build_clause(field, cleaned)
+        for field, value in fields
+        if (cleaned := _clean_text(value)) is not None
+    ]
+    if not clauses:
+        raise SearchError("at least one advanced-search condition is required")
+    return " and ".join(clauses)
+
+
 def build_filtered_expression(
     expression: str,
     *,
@@ -473,6 +507,49 @@ def _filter_by_year(
     return _filter_by_year_range(results, year, year)
 
 
+@rate_limited(profile=None)
+def run_expression_on_page(
+    page: Any,
+    expression: str,
+    *,
+    year: int | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    filter_payload: dict[str, Any] | None = None,
+    sort_by: str | None = None,
+    limit: int = 10,
+    max_pages: int = 1,
+) -> list[SearchResult]:
+    """Run a trusted professional expression on an existing browser page."""
+    try:
+        expression = expression.strip()
+        if not expression:
+            raise SearchError("professional search expression is required")
+        _validate_run_options(limit, max_pages)
+        start_year = year_from if year_from is not None else year
+        end_year = year_to if year_to is not None else year
+        results = _search_page(
+            page,
+            expression,
+            year_from=start_year,
+            year_to=end_year,
+            filter_payload=filter_payload,
+            sort_by=sort_by,
+            limit=limit,
+            max_pages=max_pages,
+        )
+        return _filter_by_year_range(results, start_year, end_year)
+    except ParseError as exc:
+        raise SearchError(
+            f"failed to parse professional-search results: {exc}"
+        ) from exc
+    except SearchError:
+        raise
+    except Exception as exc:
+        _raise_for_security_verification(page)
+        raise SearchError(f"professional search failed: {exc}") from exc
+
+
 def _run_expression(
     expression: str,
     *,
@@ -487,30 +564,19 @@ def _run_expression(
 ) -> list[SearchResult]:
     """Run one trusted CNKI professional-search expression."""
     try:
-        expression = expression.strip()
-        if not expression:
-            raise SearchError("professional search expression is required")
-        _validate_run_options(limit, max_pages)
         ensure_login(profile=profile)
         with Runtime(profile=profile) as runtime:
-            page = runtime.get_page()
-            start_year = year_from if year_from is not None else year
-            end_year = year_to if year_to is not None else year
-            results = _search_page(
-                page,
+            return run_expression_on_page(
+                runtime.get_page(),
                 expression,
-                year_from=start_year,
-                year_to=end_year,
+                year=year,
+                year_from=year_from,
+                year_to=year_to,
                 filter_payload=filter_payload,
                 sort_by=sort_by,
                 limit=limit,
                 max_pages=max_pages,
             )
-            return _filter_by_year_range(results, start_year, end_year)
-    except ParseError as exc:
-        raise SearchError(
-            f"failed to parse professional-search results: {exc}"
-        ) from exc
     except SearchError:
         raise
     except Exception as exc:
@@ -603,5 +669,7 @@ __all__ = [
     "build_filtered_expression",
     "build_expression",
     "build_expressions",
+    "build_structured_expression",
     "run",
+    "run_expression_on_page",
 ]

@@ -34,7 +34,7 @@ with CnkiClient(profile="profile1") as client:
 | `author` | 作者 |
 | `institution` | 作者单位 |
 
-CLI 和 MCP 的搜索结果保持精简，每条记录只有四项：
+CLI 的搜索结果保持精简，每条记录有四项：
 
 ```json
 [
@@ -49,6 +49,7 @@ CLI 和 MCP 的搜索结果保持精简，每条记录只有四项：
 
 `date` 优先使用完整的 `yyyy-mm-dd`，知网页面只提供年份时则返回 `yyyy`。
 搜索结果用于浏览和筛选，摘要、关键词、DOI 等详细信息由 `info` 命令返回。
+MCP 搜索结果会额外返回 `url`，供 `get-info-from-url` 继续读取详情。
 
 ## 可检索字段
 
@@ -133,11 +134,31 @@ uv run cnki-mcp logout --profile school
 
 ## MCP 工具
 
-MCP 工具 `cnki_search` 的 `query` 参数接受相同的专业检索式：
+推荐使用 HTTP。直接运行 `cnki-mcp` 即可启动 HTTP MCP Server，同时打开一个
+持久浏览器。浏览器会在整个服务进程中复用，服务退出时随之关闭。
+
+HTTP 和 SSE 提供四个工具：
+
+- `easy-search(keywords, limit=10, sort_by=None)`：一框式检索。
+- `advanced-search(...)`：用题名、作者、期刊、年份等结构化条件进行专业检索。
+- `get-info-from-url(url)`：读取搜索结果 URL 对应的文章详情。
+- `get-info-by-detail(...)`：用详细题录条件专业检索，并返回所有候选的详情列表。
+
+`advanced-search` 第一版不提供 negative 条件。搜索结果在服务内存中保留 10 分钟，
+这段时间内把搜索得到的 URL 传给 `get-info-from-url` 最可靠。超过 10 分钟仍会尝试，
+但动态 URL 可能已经失效。
+
+stdio 额外提供 `login(profile)`、`logout()` 和 `profile://list` resource。
+stdio 启动时不会打开浏览器，必须先调用 `login`。`logout` 只关闭浏览器，不删除
+Cookie 或已经保存的登录状态。
+
+专业检索示例：
 
 ```json
 {
-  "query": "SU='北京' * '奥运' and FT='环境保护'",
+  "title": "无心插柳",
+  "author": "袁晓燕",
+  "journal": "世界经济文汇",
   "limit": 10,
   "sort_by": "relevance"
 }

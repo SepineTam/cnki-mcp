@@ -9,6 +9,6 @@
 
 """MCP server package."""
 
-from .cnki_mcp_server import mcp_server
+from .cnki_mcp_server import create_mcp_server
 
-__all__ = ["mcp_server"]
+__all__ = ["create_mcp_server"]

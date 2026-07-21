@@ -9,6 +9,7 @@
 
 """Tests for core/tools/professional_search.py."""
 
+import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +18,48 @@ from cnki_mcp.core.exceptions import ParseError, SearchError
 from cnki_mcp.core.models import SearchResult
 from cnki_mcp.core.retrieval.models import CnkiQuery
 from cnki_mcp.core.tools import professional_search
+
+
+def test_build_structured_expression_maps_every_public_field() -> None:
+    """Advanced-search fields map to their documented CNKI field codes."""
+    expression = professional_search.build_structured_expression(
+        title="标题",
+        author="作者",
+        journal="期刊",
+        keywords="关键词",
+        subject="主题",
+        abstract="摘要",
+        institution="单位",
+        fund="基金",
+        doi="10.1/example",
+    )
+
+    assert expression == (
+        "TI='标题' and AU='作者' and LY='期刊' and KY='关键词' "
+        "and SU='主题' and AB='摘要' and AF='单位' and FU='基金' "
+        "and DOI='10.1/example'"
+    )
+
+
+def test_build_structured_expression_requires_one_condition() -> None:
+    """An empty advanced search cannot submit an unrestricted query."""
+    with pytest.raises(SearchError, match="condition"):
+        professional_search.build_structured_expression()
+
+
+def test_structured_expression_uses_shared_quote_safety() -> None:
+    """Structured fields reject values that cannot be quoted safely."""
+    with pytest.raises(SearchError, match="both quote types"):
+        professional_search.build_structured_expression(title='x\' and "y"')
+
+
+def test_structured_expression_does_not_expose_negative() -> None:
+    """The deferred negative feature is absent from the public builder."""
+    parameters = inspect.signature(
+        professional_search.build_structured_expression
+    ).parameters
+
+    assert "negative" not in parameters
 
 
 def test_build_expression_uses_cnki_professional_fields() -> None:

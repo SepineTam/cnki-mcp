@@ -60,26 +60,23 @@ def test_version_is_available_without_starting_server(capsys) -> None:
         assert "cnki-mcp" in capsys.readouterr().out
 
 
-@patch("cnki_mcp.cli.main.ensure_login", create=True)
-@patch("cnki_mcp.cli.main.mcp_server", create=True)
+@patch("cnki_mcp.cli.main.create_mcp_server")
 def test_no_arguments_start_default_http_server(
-    mock_server: MagicMock,
-    mock_ensure_login: MagicMock,
+    mock_create_server: MagicMock,
 ) -> None:
     """Bare cnki-mcp starts HTTP on the documented default address."""
     assert main([]) == 0
 
-    mock_ensure_login.assert_called_once_with(profile=None)
-    assert mock_server.settings.host == "127.0.0.1"
-    assert mock_server.settings.port == 7788
+    mock_server = mock_create_server.return_value
+    mock_create_server.assert_called_once_with(
+        "http", host="127.0.0.1", port=7788
+    )
     mock_server.run.assert_called_once_with(transport="streamable-http")
 
 
-@patch("cnki_mcp.cli.main.ensure_login", create=True)
-@patch("cnki_mcp.cli.main.mcp_server", create=True)
+@patch("cnki_mcp.cli.main.create_mcp_server")
 def test_serve_maps_public_http_name_to_fastmcp_transport(
-    mock_server: MagicMock,
-    mock_ensure_login: MagicMock,
+    mock_create_server: MagicMock,
 ) -> None:
     """The public http name maps to FastMCP streamable HTTP."""
     code = main(
@@ -95,45 +92,42 @@ def test_serve_maps_public_http_name_to_fastmcp_transport(
     )
 
     assert code == 0
-    mock_ensure_login.assert_called_once_with(profile=None)
-    assert mock_server.settings.host == "0.0.0.0"
-    assert mock_server.settings.port == 9000
+    mock_server = mock_create_server.return_value
+    mock_create_server.assert_called_once_with(
+        "http", host="0.0.0.0", port=9000
+    )
     mock_server.run.assert_called_once_with(transport="streamable-http")
 
 
-@patch("cnki_mcp.cli.main.ensure_login", create=True)
-@patch("cnki_mcp.cli.main.mcp_server", create=True)
+@patch("cnki_mcp.cli.main.create_mcp_server")
 def test_sse_warns_and_starts(
-    mock_server: MagicMock,
-    mock_ensure_login: MagicMock,
+    mock_create_server: MagicMock,
     capsys,
 ) -> None:
     """SSE stays available but recommends HTTP on stderr."""
     assert main(["serve", "--transport", "sse"]) == 0
 
     assert "HTTP" in capsys.readouterr().err
+    mock_server = mock_create_server.return_value
     mock_server.run.assert_called_once_with(transport="sse")
 
 
-@patch("cnki_mcp.cli.main.ensure_login", create=True)
-@patch("cnki_mcp.cli.main.mcp_server", create=True)
+@patch("cnki_mcp.cli.main.create_mcp_server")
 def test_stdio_starts_only_when_explicitly_selected(
-    mock_server: MagicMock,
-    mock_ensure_login: MagicMock,
+    mock_create_server: MagicMock,
 ) -> None:
     """Stdio is available only through the explicit serve option."""
     assert main(["serve", "--transport", "stdio"]) == 0
+    mock_server = mock_create_server.return_value
     mock_server.run.assert_called_once_with(transport="stdio")
 
 
-@patch("cnki_mcp.cli.main.ensure_login", create=True)
-@patch("cnki_mcp.cli.main.mcp_server", create=True)
+@patch("cnki_mcp.cli.main.create_mcp_server")
 def test_server_keyboard_interrupt_exits_cleanly(
-    mock_server: MagicMock,
-    mock_ensure_login: MagicMock,
+    mock_create_server: MagicMock,
 ) -> None:
     """Ctrl+C stops a running server without exposing a traceback."""
-    mock_server.run.side_effect = KeyboardInterrupt
+    mock_create_server.return_value.run.side_effect = KeyboardInterrupt
 
     assert main(["serve"]) == 0
 

@@ -55,8 +55,27 @@ def _wait_for_detail(page: object) -> None:
 
 
 @rate_limited(profile=None)
+def run_on_page(page: object, article_id: str) -> Article:
+    """Fetch and parse article metadata using an existing browser page."""
+    try:
+        url = build_detail_url(article_id)
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=PAGE_LOAD_TIMEOUT_SECONDS * 1000,
+        )
+        _wait_for_detail(page)
+        return parse(page)
+    except ParseError as exc:
+        raise MetadataError(f"failed to parse article metadata: {exc}") from exc
+    except MetadataError:
+        raise
+    except Exception as exc:
+        raise MetadataError(f"metadata retrieval failed: {exc}") from exc
+
+
 def run(article_id: str, *, profile: str | None = None) -> Article:
-    """Fetch and parse metadata for a CNKI article.
+    """Fetch and parse metadata in a temporary browser runtime.
 
     Args:
         article_id: Article identifier.
@@ -71,17 +90,9 @@ def run(article_id: str, *, profile: str | None = None) -> Article:
     try:
         ensure_login(profile=profile)
         with Runtime(profile=profile) as runtime:
-            url = build_detail_url(article_id)
-            page = runtime.get_page()
-            page.goto(
-                url,
-                wait_until="domcontentloaded",
-                timeout=PAGE_LOAD_TIMEOUT_SECONDS * 1000,
-            )
-            _wait_for_detail(page)
-            return parse(page)
-    except ParseError as exc:
-        raise MetadataError(f"failed to parse article metadata: {exc}") from exc
+            return run_on_page(runtime.get_page(), article_id)
+    except MetadataError:
+        raise
     except Exception as exc:
         raise MetadataError(f"metadata retrieval failed: {exc}") from exc
 
@@ -89,4 +100,5 @@ def run(article_id: str, *, profile: str | None = None) -> Article:
 __all__ = [
     "build_detail_url",
     "run",
+    "run_on_page",
 ]

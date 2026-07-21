@@ -17,11 +17,10 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from urllib.parse import urlparse
 
-from ..core.auth import ensure_login
 from ..core.client import CnkiClient
 from ..core.exceptions import CnkiMcpError
 from ..core.tools.professional_search import PROFESSIONAL_SEARCH_GUIDE
-from ..server.cnki_mcp_server import mcp_server
+from ..server.cnki_mcp_server import create_mcp_server
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7788
@@ -185,22 +184,13 @@ def _validate_serve_args(
         parser.error("--host and --port are not allowed with stdio transport")
 
 
-def _configure_server(host: str, port: int) -> None:
-    """Configure FastMCP network settings before the application is built."""
-    mcp_server.settings.host = host
-    mcp_server.settings.port = port
-    if host not in {"127.0.0.1", "localhost", "::1"}:
-        mcp_server.settings.transport_security = None
-
-
 def _run_server(transport: str, host: str, port: int) -> int:
-    """Ensure login and run the selected MCP transport."""
-    ensure_login(profile=None)
-    _configure_server(host, port)
+    """Build and run the selected MCP transport."""
     if transport == "sse":
         print("提示：SSE 可以使用，但建议优先选择 HTTP。", file=sys.stderr)
+    server = create_mcp_server(transport, host=host, port=port)
     try:
-        mcp_server.run(transport=TRANSPORT_MAP[transport])
+        server.run(transport=TRANSPORT_MAP[transport])
     except KeyboardInterrupt:
         return 0
     return 0
