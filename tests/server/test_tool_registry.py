@@ -16,7 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from cnki_mcp.core.exceptions import LoginRequired
-from cnki_mcp.core.models import Article, AuthState, SearchResult
+from cnki_mcp.core.models import Article, AuthState, JournalIssue, SearchResult
 from cnki_mcp.server.search_cache import SearchResultCache
 from cnki_mcp.server.tool_registry import McpToolService
 
@@ -90,6 +90,29 @@ def test_network_start_requires_an_initialized_profile(_: Any) -> None:
 
     with pytest.raises(LoginRequired, match="cnki-mcp init"):
         service.start_network()
+
+
+@patch("cnki_mcp.server.tool_registry.auth.require_profile", return_value="default")
+@patch("cnki_mcp.server.tool_registry.auth.ensure_login")
+def test_overlapping_network_sessions_share_one_browser(
+    mock_ensure_login: Any,
+    mock_require_profile: Any,
+) -> None:
+    """Concurrent MCP sessions lease one worker without profile conflicts."""
+    worker = FakeWorker([])
+    service = McpToolService(worker=worker, cache=SearchResultCache())
+
+    service.start_network()
+    service.start_network()
+
+    mock_require_profile.assert_called()
+    mock_ensure_login.assert_called_once_with(profile="default")
+    assert worker.started_profiles == ["default"]
+
+    service.close_network()
+    assert worker.close_count == 0
+    service.close_network()
+    assert worker.close_count == 1
 
 
 def test_easy_search_returns_url_and_caches_full_result() -> None:
@@ -186,6 +209,53 @@ def test_get_info_from_url_returns_one_metadata_dict() -> None:
     assert isinstance(result, dict)
     assert result["title"] == "无心插柳"
     assert result["abstract"] == "摘要"
+
+
+def test_list_journal_returns_issue_envelope_with_complete_articles() -> None:
+    """The MCP response includes issue coordinates, count, and metadata."""
+    issue = JournalIssue(
+        name="世界经济",
+        year=2026,
+        volume="49",
+        issue="01",
+        issn="1002-9621",
+        articles=[
+            Article(
+                article_id="article-1",
+                title="文章",
+                year=2026,
+                source="世界经济",
+                volume="49",
+                issue="01",
+                pages="3-20",
+            )
+        ],
+    )
+    service = McpToolService(
+        worker=FakeWorker([issue]),
+        cache=SearchResultCache(),
+    )
+
+    result = service.list_journal(year=2026, vol=1, issn="1002-9621")
+
+    assert result["name"] == "世界经济"
+    assert result["volume"] == "49"
+    assert result["issue"] == "01"
+    assert result["count"] == 1
+    assert result["articles"][0]["pages"] == "3-20"
+
+
+@patch("cnki_mcp.server.tool_registry.journal.search_issn_on_page")
+def test_search_issn_executes_on_worker_page(mock_search_issn: Any) -> None:
+    """ISSN lookup reuses the server's persistent browser page."""
+    worker = ExecutingWorker()
+    mock_search_issn.return_value = {"世界经济": "1002-9621"}
+    service = McpToolService(worker=worker, cache=SearchResultCache())
+
+    result = service.search_issn("世界经济")
+
+    mock_search_issn.assert_called_once_with(worker.page, "世界经济")
+    assert result == {"世界经济": "1002-9621"}
 
 
 def test_get_info_by_detail_always_returns_a_list() -> None:

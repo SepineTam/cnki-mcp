@@ -170,6 +170,28 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_profile_option(info_parser)
     _add_output_option(info_parser)
 
+    journal_parser = tools.add_parser(
+        "journal",
+        help="List complete metadata for one journal issue",
+    )
+    journal_parser.add_argument("--issn", required=True, help="Journal ISSN")
+    journal_parser.add_argument("--year", type=int, required=True)
+    journal_parser.add_argument(
+        "--vol",
+        required=True,
+        help="Issue number shown in CNKI, such as 1 or 01",
+    )
+    _add_profile_option(journal_parser)
+    _add_output_option(journal_parser)
+
+    issn_parser = tools.add_parser(
+        "issn",
+        help="Resolve a journal name to its ISSN",
+    )
+    issn_parser.add_argument("--journal", required=True, help="Journal name")
+    _add_profile_option(issn_parser)
+    _add_output_option(issn_parser)
+
     return parser
 
 
@@ -302,6 +324,25 @@ def _run_info(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Any:
     return asdict(result)
 
 
+def _run_journal(args: argparse.Namespace) -> dict[str, Any]:
+    """List complete article metadata for one journal issue."""
+    client = CnkiClient(profile=args.profile)
+    issue = client.list_journal(
+        issn=args.issn,
+        year=args.year,
+        vol=args.vol,
+    )
+    return {
+        "name": issue.name,
+        "issn": issue.issn,
+        "year": issue.year,
+        "volume": issue.volume,
+        "issue": issue.issue,
+        "count": issue.count,
+        "articles": [asdict(article) for article in issue.articles],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the unified cnki-mcp CLI."""
     raw_args = list(sys.argv[1:] if argv is None else argv)
@@ -324,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
                 data = _run_search(parser, args)
             elif args.command == "tool" and args.tool_command == "info":
                 data = _run_info(parser, args)
+            elif args.command == "tool" and args.tool_command == "journal":
+                data = _run_journal(args)
+            elif args.command == "tool" and args.tool_command == "issn":
+                client = CnkiClient(profile=args.profile)
+                data = client.search_issn(args.journal)
             elif args.command == "login":
                 client = CnkiClient(profile=args.profile)
                 result = client.login()

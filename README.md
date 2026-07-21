@@ -30,6 +30,25 @@ uv run cnki-mcp serve --transport http --host 127.0.0.1 --port 7788
 服务启动时会打开一个持久浏览器，并在服务进程退出时关闭。项目只提供知网检索和
 文章信息读取，不提供全文下载。
 
+按 ISSN 获取某一期的全部文章 metadata：
+
+```bash
+uv run cnki-mcp tool journal --issn 1002-9621 --year 2026 --vol 1
+```
+
+这里的 `--vol` 表示知网页面上的期号。返回结果会把真正的卷号 `volume` 和期号
+`issue` 分开提供。尚未发行的年份或期号会返回 `IssueNotAvailable`。
+
+通过期刊名称搜索 ISSN：
+
+```bash
+uv run cnki-mcp tool issn --journal "世界经济"
+```
+
+搜索会忽略期刊名中的空格和标点，并返回知网搜索到的全部候选期刊。期刊目录来自
+知网期刊导航页。工具每次都会通过 ISSN 重新定位期刊并获取当次有效的页面地址，
+不会保存其中会失效的 `p` 参数。
+
 ## 文档
 
 - [Python API 与专业检索式](docs/api.md)

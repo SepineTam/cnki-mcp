@@ -400,6 +400,14 @@ def _turn_to_page(page: Any, page_number: int) -> bool:
     if page_number <= 1:
         return True
     try:
+        previous_signature = page.evaluate(
+            """() => {
+                const firstRow = document.querySelector(
+                    "#gridTable tbody tr, .result-table-list tbody tr"
+                );
+                return firstRow ? firstRow.innerText.trim() : "";
+            }"""
+        )
         clicked = page.evaluate(
             """(targetPage) => {
                 const link = document.querySelector(
@@ -418,11 +426,19 @@ def _turn_to_page(page: Any, page_number: int) -> bool:
         if not clicked:
             return False
         page.wait_for_function(
-            """(targetPage) => {
+            """(payload) => {
                 const current = document.querySelector("#curPageHid");
-                return current && current.value === targetPage;
+                const firstRow = document.querySelector(
+                    "#gridTable tbody tr, .result-table-list tbody tr"
+                );
+                const signature = firstRow ? firstRow.innerText.trim() : "";
+                return current && current.value === payload.targetPage &&
+                    signature && signature !== payload.previousSignature;
             }""",
-            str(page_number),
+            arg={
+                "targetPage": str(page_number),
+                "previousSignature": previous_signature,
+            },
             timeout=PAGE_LOAD_TIMEOUT_SECONDS * 1000,
         )
         _wait_for_selector(page, "#gridTable, .result-table-list, #briefRequest")

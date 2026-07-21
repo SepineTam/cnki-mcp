@@ -9,6 +9,7 @@
 
 """Build FastMCP servers with transport-specific CNKI capabilities."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -25,11 +26,13 @@ def _register_search_and_info_tools(
     server: FastMCP[Any],
     service: McpToolService,
 ) -> None:
-    """Register the four tools shared by every transport."""
+    """Register the tools shared by every transport."""
     server.tool(name="easy-search")(service.easy_search)
     server.tool(name="advanced-search")(service.advanced_search)
     server.tool(name="get-info-from-url")(service.get_info_from_url)
     server.tool(name="get-info-by-detail")(service.get_info_by_detail)
+    server.tool(name="list-journal")(service.list_journal)
+    server.tool(name="search-issn")(service.search_issn)
 
 
 def _register_stdio_capabilities(
@@ -63,11 +66,16 @@ def create_mcp_server(
     @asynccontextmanager
     async def lifespan(_: FastMCP[Any]) -> AsyncIterator[None]:
         if transport in NETWORK_TRANSPORTS:
-            tool_service.start_network()
+            await asyncio.to_thread(tool_service.start_network)
         try:
             yield
         finally:
-            tool_service.close()
+            close_service = (
+                tool_service.close_network
+                if transport in NETWORK_TRANSPORTS
+                else tool_service.close
+            )
+            await asyncio.to_thread(close_service)
 
     server = FastMCP(
         name="cnki-mcp",

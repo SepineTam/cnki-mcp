@@ -133,6 +133,34 @@ uv run cnki-mcp tool info "https://kns.cnki.net/kcms2/article/abstract?v=..."
 uv run cnki-mcp tool info --title "无心插柳" --author "袁晓燕" --year 2024
 ```
 
+按 ISSN 列出某一期的全部文章 metadata：
+
+```bash
+uv run cnki-mcp tool journal --issn 1002-9621 --year 2026 --vol 1
+```
+
+`--vol` 是知网页面显示的期号，例如 `1` 或 `01`。输出中的 `volume` 是期刊卷号，
+`issue` 是规范化后的期号。期刊封面和宣传页等没有作者的记录不会算作文章。
+期刊目录来自知网期刊导航页。页面中的 `p` 参数会变化，程序每次都通过 ISSN
+重新定位期刊并获取有效地址，不会保存该参数。
+
+通过期刊名称查询 ISSN：
+
+```bash
+uv run cnki-mcp tool issn --journal "世界经济"
+```
+
+搜索会忽略空格和标点，因此 `经济学季刊`、`经济学（季刊）` 和
+`经济学(季刊)` 会得到相同结果。Python 中可以调用
+`client.search_issn(journal="经济学季刊")`。它会返回知网搜索到的全部候选：
+
+```json
+{
+  "经济学(季刊)": "2095-1086",
+  "政治经济学季刊": "2097-1516"
+}
+```
+
 登录与退出可以指定 profile：
 
 ```bash
@@ -148,12 +176,27 @@ uv run cnki-mcp logout --profile school
 推荐使用 HTTP。直接运行 `cnki-mcp` 即可启动 HTTP MCP Server，同时打开一个
 持久浏览器。浏览器会在整个服务进程中复用，服务退出时随之关闭。
 
-HTTP 和 SSE 提供四个工具：
+HTTP 和 SSE 提供六个工具：
 
 - `easy-search(keywords, limit=10, sort_by=None)`：一框式检索。
 - `advanced-search(...)`：用题名、作者、期刊、年份等结构化条件进行专业检索。
 - `get-info-from-url(url)`：读取搜索结果 URL 对应的文章详情。
 - `get-info-by-detail(...)`：用详细题录条件专业检索，并返回所有候选的详情列表。
+- `list-journal(issn, year, vol)`：按 ISSN 返回一期文章的完整 metadata。
+- `search-issn(journal)`：返回规范期刊名称到 ISSN 的映射。
+
+`list-journal` 示例：
+
+```json
+{
+  "issn": "1002-9621",
+  "year": 2026,
+  "vol": 1
+}
+```
+
+未发行或不存在的年份、期号会返回 `IssueNotAvailable`。返回结构包含期刊名称、
+ISSN、年份、卷号、期号、文章数量和 `articles` 列表。
 
 `advanced-search` 第一版不提供 negative 条件。搜索结果在服务内存中保留 10 分钟，
 这段时间内把搜索得到的 URL 传给 `get-info-from-url` 最可靠。超过 10 分钟仍会尝试，

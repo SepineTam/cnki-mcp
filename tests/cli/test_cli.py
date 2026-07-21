@@ -17,7 +17,13 @@ import pytest
 
 from cnki_mcp.cli.main import _format_output, main
 from cnki_mcp.core.exceptions import CnkiMcpError
-from cnki_mcp.core.models import Article, AuthState, LoginResult, SearchResult
+from cnki_mcp.core.models import (
+    Article,
+    AuthState,
+    JournalIssue,
+    LoginResult,
+    SearchResult,
+)
 from cnki_mcp.core.retrieval.models import MetadataLookupResult
 
 
@@ -313,6 +319,67 @@ def test_tool_search_requires_exactly_one_query_mode() -> None:
         main(["tool", "search"])
     with pytest.raises(SystemExit):
         main(["tool", "search", "生态", "--advanced", "TI='生态'"])
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+def test_tool_journal_lists_one_issue(
+    mock_client_cls: MagicMock,
+    capsys,
+) -> None:
+    """The CLI accepts the same ISSN/year/vol interface as MCP."""
+    client = mock_client_cls.return_value
+    client.list_journal.return_value = JournalIssue(
+        name="世界经济",
+        year=2026,
+        volume="49",
+        issue="01",
+        articles=[Article(article_id="id1", title="文章")],
+    )
+
+    code = main(
+        [
+            "tool",
+            "journal",
+            "--issn",
+            "1002-9621",
+            "--year",
+            "2026",
+            "--vol",
+            "1",
+        ]
+    )
+
+    assert code == 0
+    client.list_journal.assert_called_once_with(
+        issn="1002-9621",
+        year=2026,
+        vol="1",
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["issue"] == "01"
+    assert len(output["articles"]) == 1
+
+
+def test_tool_journal_requires_issn() -> None:
+    """CLI validation rejects a missing journal ISSN."""
+    with pytest.raises(SystemExit):
+        main(["tool", "journal", "--year", "2026", "--vol", "1"])
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+def test_tool_issn_resolves_journal_name(
+    mock_client_cls: MagicMock,
+    capsys,
+) -> None:
+    """The CLI exposes the journal-to-ISSN lookup."""
+    client = mock_client_cls.return_value
+    client.search_issn.return_value = {"世界经济": "1002-9621"}
+
+    code = main(["tool", "issn", "--journal", "世界经济"])
+
+    assert code == 0
+    client.search_issn.assert_called_once_with("世界经济")
+    assert json.loads(capsys.readouterr().out) == {"世界经济": "1002-9621"}
 
 
 @patch("cnki_mcp.cli.main.CnkiClient")

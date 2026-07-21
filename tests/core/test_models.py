@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from cnki_mcp.core.models import (
     Article,
     AuthState,
+    JournalIssue,
+    JournalRecord,
     LoginResult,
     SearchFilters,
     SearchResult,
@@ -96,3 +98,31 @@ def test_article_defaults() -> None:
     assert article.doi is None
     assert article.url is None
     assert article.download_url is None
+
+
+def test_journal_issue_reports_article_count() -> None:
+    """JournalIssue groups complete metadata for one published issue."""
+    issue = JournalIssue(
+        name="世界经济",
+        year=2026,
+        issue="01",
+        volume="49",
+        issn="1002-9621",
+        articles=[Article(article_id="id1", title="Title")],
+    )
+
+    assert issue.count == 1
+
+
+def test_journal_record_keeps_fresh_navigation_identity() -> None:
+    """JournalRecord carries resolved navi identity without persisting it."""
+    record = JournalRecord(
+        name="世界经济",
+        url="https://navi.cnki.net/knavi/detail?p=fresh",
+        issn="1002-9621",
+        code="SJJJ",
+    )
+
+    assert record.name == "世界经济"
+    assert record.issn == "1002-9621"
+    assert record.code == "SJJJ"

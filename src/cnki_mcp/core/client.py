@@ -19,9 +19,18 @@ from .auth import (
     refresh_login,
 )
 from .config import AUTH_TIMEOUT_SECONDS
-from .models import Article, AuthState, LoginResult, SearchFilters, SearchResult
+from .models import (
+    Article,
+    AuthState,
+    JournalIssue,
+    LoginResult,
+    SearchFilters,
+    SearchResult,
+)
 from .retrieval.models import CnkiQuery, MetadataLookupResult
-from .tools import basic_search, metadata, metadata_lookup, search
+from .tools import basic_search, journal, metadata, metadata_lookup, search
+
+journal_tool = journal
 
 
 class CnkiClient:
@@ -132,6 +141,32 @@ class CnkiClient:
         """
         self._ensure_login()
         return metadata.run(article_id, profile=self._profile)
+
+    def list_journal(
+        self,
+        *,
+        issn: str,
+        year: int,
+        vol: int | str,
+    ) -> JournalIssue:
+        """Return complete metadata for one issue identified by ISSN.
+
+        The public ``vol`` argument is the issue number shown in CNKI, such as
+        ``1`` or ``01``. The returned object separately reports the journal's
+        bibliographic volume and issue values.
+        """
+        self._ensure_login()
+        return journal.run(
+            issn=issn,
+            year=year,
+            vol=vol,
+            profile=self._profile,
+        )
+
+    def search_issn(self, journal: str) -> dict[str, str]:
+        """Return all matching canonical journal names mapped to ISSNs."""
+        self._ensure_login()
+        return journal_tool.search_issn(journal, profile=self._profile)
 
     def search_basic(
         self,

@@ -85,6 +85,11 @@ SELECTORS: dict[str, list[str]] = {
         ".journal",
         ".c_source",
     ],
+    "publication": [
+        ".top-tip",
+        ".sourinfo",
+        ".source-info",
+    ],
     "doi": [
         ".doi",
         ".c_doi",
@@ -236,6 +241,30 @@ def _parse_year(text: str | None) -> int | None:
     return int(match.group()) if match else None
 
 
+def _parse_publication_metadata(
+    text: str | None,
+) -> tuple[int | None, str | None, str | None, str | None]:
+    """Extract year, volume, issue, and pages from KNS publication text."""
+    if not text:
+        return None, None, None, None
+    normalized = " ".join(text.split())
+    match = re.search(
+        r"(?P<year>\d{4})\s*年?\s*[,，]\s*"
+        r"(?P<volume>[^\s()：:,，]+)\s*"
+        r"\(\s*(?P<issue>[^)]+?)\s*\)\s*"
+        r"[：:]\s*(?P<pages>[^\s]+)",
+        normalized,
+    )
+    if match is None:
+        return _parse_year(normalized), None, None, None
+    return (
+        int(match.group("year")),
+        match.group("volume").strip(),
+        match.group("issue").strip(),
+        match.group("pages").strip(".,，。"),
+    )
+
+
 def _extract_article_id(page: Page, url: str | None = None) -> str | None:
     """Extract the article identifier from the page URL or hidden inputs."""
     target_url = url or page.url
@@ -296,8 +325,11 @@ def parse(page: Page, *, url: str | None = None) -> Article:
     else:
         abstract = _parse_labeled_text(page, "abstract")
     keywords = _parse_keywords(page)
-    year_text = _parse_text(page, SELECTORS["year"])
-    year = _parse_year(year_text)
+    publication_text = _parse_text(page, SELECTORS["publication"])
+    year, volume, issue, pages = _parse_publication_metadata(publication_text)
+    if year is None:
+        year_text = _parse_text(page, SELECTORS["year"])
+        year = _parse_year(year_text)
     source = _parse_text(page, SELECTORS["source"])
     if source:
         source = _strip_label(source).strip(" .。")
@@ -322,6 +354,9 @@ def parse(page: Page, *, url: str | None = None) -> Article:
         keywords=keywords or None,
         year=year,
         source=source,
+        volume=volume,
+        issue=issue,
+        pages=pages,
         doi=doi,
         url=page_url,
         download_url=None,

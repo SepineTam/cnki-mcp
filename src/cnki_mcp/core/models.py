@@ -111,10 +111,39 @@ class Article:
     download_url: str | None = None
 
 
+@dataclass
+class JournalRecord:
+    """Represents one journal resolved through CNKI navigation."""
+
+    name: str
+    url: str
+    issn: str | None = None
+    code: str | None = None
+
+
+@dataclass
+class JournalIssue:
+    """Represents all parsed articles in one published journal issue."""
+
+    name: str
+    year: int
+    issue: str
+    volume: str | None = None
+    issn: str | None = None
+    articles: list[Article] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        """Return the number of articles in the issue."""
+        return len(self.articles)
+
+
 __all__ = [
     "AuthState",
     "LoginResult",
     "SearchResult",
     "SearchFilters",
     "Article",
+    "JournalRecord",
+    "JournalIssue",
 ]

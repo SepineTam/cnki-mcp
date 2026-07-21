@@ -14,6 +14,7 @@ import pytest
 from cnki_mcp.core.exceptions import ParseError
 from cnki_mcp.core.models import Article
 from cnki_mcp.core.parsers.detail_parser import (
+    _parse_publication_metadata,
     _parse_year,
     parse_html,
 )
@@ -25,6 +26,16 @@ def test_parse_year_extracts_four_digit_year() -> None:
     assert _parse_year("Published 2023/05") == 2023
     assert _parse_year(None) is None
     assert _parse_year("no year") is None
+
+
+def test_parse_publication_metadata_extracts_volume_issue_and_pages() -> None:
+    """Current KNS publication text exposes bibliographic coordinates."""
+    assert _parse_publication_metadata(
+        "世界经济 . 2026 ,49 (07) : 3-31 查看该刊数据库收录来源"
+    ) == (2026, "49", "07", "3-31")
+    assert _parse_publication_metadata(
+        "经济学(季刊) . 2026, 26(03): 713-732"
+    ) == (2026, "26", "03", "713-732")
 
 
 def test_parse_html_returns_article() -> None:
@@ -89,6 +100,32 @@ def test_parse_html_returns_kns_article_metadata() -> None:
     assert article.source == "管理世界"
     assert article.doi == "10.1234/example"
     assert article.download_url is None
+
+
+def test_parse_html_reads_current_top_tip_publication_metadata() -> None:
+    """The current detail-page top tip fills year, volume, issue, and pages."""
+    html = """
+    <html>
+      <body>
+        <h1>规制开放与国际专利申请</h1>
+        <div class="top-tip">
+          <span>
+            <a>世界经济 .</a>
+            <a>2026 ,49 (07)</a>
+            <span>: 3-31</span>
+          </span>
+        </div>
+      </body>
+    </html>
+    """
+
+    article = parse_html(html)
+
+    assert article.source == "世界经济"
+    assert article.year == 2026
+    assert article.volume == "49"
+    assert article.issue == "07"
+    assert article.pages == "3-31"
 
 
 def test_parse_html_missing_required_fields_raises() -> None:

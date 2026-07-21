@@ -10,14 +10,23 @@
 """Transport-independent implementation of CNKI MCP tools."""
 
 from dataclasses import asdict
+from threading import RLock
 from typing import Any
 
 from ..core import auth
 from ..core.browser_worker import BrowserWorker
-from ..core.models import SearchFilters, SearchResult
+from ..core.models import JournalIssue, SearchFilters, SearchResult
 from ..core.retrieval.models import CnkiQuery
-from ..core.tools import basic_search, metadata, professional_search, search
+from ..core.tools import (
+    basic_search,
+    journal,
+    metadata,
+    professional_search,
+    search,
+)
 from .search_cache import SearchResultCache
+
+journal_tool = journal
 
 
 def _search_result_to_dict(result: SearchResult) -> dict[str, Any]:
@@ -28,6 +37,19 @@ def _search_result_to_dict(result: SearchResult) -> dict[str, Any]:
         "journal": result.journal,
         "date": result.date,
         "url": result.url or result.article_id,
+    }
+
+
+def _journal_issue_to_dict(issue: JournalIssue) -> dict[str, Any]:
+    """Serialize one complete journal issue for MCP and CLI clients."""
+    return {
+        "name": issue.name,
+        "issn": issue.issn,
+        "year": issue.year,
+        "volume": issue.volume,
+        "issue": issue.issue,
+        "count": issue.count,
+        "articles": [asdict(article) for article in issue.articles],
     }
 
 
@@ -43,17 +65,42 @@ class McpToolService:
         """Initialize a service without starting its browser."""
         self.worker = worker if worker is not None else BrowserWorker()
         self.cache = cache if cache is not None else SearchResultCache()
+        self._network_sessions = 0
+        self._network_lock = RLock()
 
     def start_network(self) -> None:
         """Ensure login and start the browser used by a network server."""
-        profile = auth.require_profile()
-        auth.ensure_login(profile=profile)
-        self.worker.start(profile=profile)
+        with self._network_lock:
+            profile = auth.require_profile()
+            if self._network_sessions > 0:
+                if (
+                    not self.worker.is_running
+                    or self.worker.current_profile != profile
+                ):
+                    raise RuntimeError("network browser lease state is inconsistent")
+                self._network_sessions += 1
+                return
+            auth.ensure_login(profile=profile)
+            self.worker.start(profile=profile)
+            self._network_sessions = 1
+
+    def close_network(self) -> None:
+        """Release one network session and close after the final lease."""
+        with self._network_lock:
+            if self._network_sessions < 1:
+                return
+            self._network_sessions -= 1
+            if self._network_sessions > 0:
+                return
+            self.worker.close()
+            self.cache.clear()
 
     def close(self) -> None:
         """Close the browser while preserving persisted login state."""
-        self.worker.close()
-        self.cache.clear()
+        with self._network_lock:
+            self._network_sessions = 0
+            self.worker.close()
+            self.cache.clear()
 
     def easy_search(
         self,
@@ -141,6 +188,34 @@ class McpToolService:
             target = cached.url or cached.article_id
         article = self.worker.call(lambda page: metadata.run_on_page(page, target))
         return asdict(article)
+
+    def list_journal(
+        self,
+        issn: str,
+        year: int,
+        vol: int | str,
+    ) -> dict[str, Any]:
+        """List complete metadata for one journal issue.
+
+        ``issn`` is the journal's unique identifier. ``vol`` means the issue
+        number shown in CNKI, for example ``1`` or ``01``. The response keeps
+        the bibliographic ``volume`` and ``issue`` as separate fields.
+        """
+        issue = self.worker.call(
+            lambda page: journal.run_on_page(
+                page,
+                issn=issn,
+                year=year,
+                vol=vol,
+            )
+        )
+        return _journal_issue_to_dict(issue)
+
+    def search_issn(self, journal: str) -> dict[str, str]:
+        """Resolve an exact journal name to its canonical name and ISSN."""
+        return self.worker.call(
+            lambda page: journal_tool.search_issn_on_page(page, journal)
+        )
 
     def get_info_by_detail(
         self,

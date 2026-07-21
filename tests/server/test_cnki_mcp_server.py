@@ -10,6 +10,7 @@
 """Tests for transport-specific MCP server registration and lifecycle."""
 
 import asyncio
+import threading
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
@@ -20,6 +21,8 @@ BASE_TOOL_NAMES = {
     "advanced-search",
     "get-info-from-url",
     "get-info-by-detail",
+    "list-journal",
+    "search-issn",
 }
 
 
@@ -30,14 +33,22 @@ class FakeService:
         """Initialize lifecycle counters."""
         self.network_start_count = 0
         self.close_count = 0
+        self.network_start_thread: int | None = None
+        self.close_thread: int | None = None
 
     def start_network(self) -> None:
         """Record network browser startup."""
         self.network_start_count += 1
+        self.network_start_thread = threading.get_ident()
 
     def close(self) -> None:
         """Record service shutdown."""
         self.close_count += 1
+        self.close_thread = threading.get_ident()
+
+    def close_network(self) -> None:
+        """Record release of the final network session."""
+        self.close()
 
     def easy_search(
         self,
@@ -62,6 +73,19 @@ class FakeService:
     def get_info_by_detail(self, title: str) -> list[dict[str, Any]]:
         """Return an empty detailed lookup result."""
         return []
+
+    def list_journal(
+        self,
+        year: int,
+        vol: int | str,
+        issn: str,
+    ) -> dict[str, Any]:
+        """Return a minimal journal issue result."""
+        return {"issn": issn, "year": year, "issue": vol}
+
+    def search_issn(self, journal: str) -> dict[str, str]:
+        """Return a minimal journal-to-ISSN mapping."""
+        return {journal: "1002-9621"}
 
     def login(self, profile: str | None = None) -> dict[str, Any]:
         """Return a minimal login result."""
@@ -108,20 +132,37 @@ async def _enter_lifespan(server: Any) -> None:
         return
 
 
-def test_http_registers_only_four_public_tools() -> None:
-    """HTTP exposes search and info tools only."""
+def test_http_registers_public_search_and_info_tools() -> None:
+    """HTTP exposes search, issue listing, and article info tools."""
     server = create_mcp_server("http")
 
     assert _tool_names(server) == BASE_TOOL_NAMES
     assert _resource_uris(server) == set()
 
 
-def test_sse_registers_only_four_public_tools() -> None:
+def test_sse_registers_the_same_public_tools() -> None:
     """SSE has the same public surface as HTTP."""
     server = create_mcp_server("sse", service=FakeService())
 
     assert _tool_names(server) == BASE_TOOL_NAMES
     assert _resource_uris(server) == set()
+
+
+def test_list_journal_schema_requires_issn_year_and_vol() -> None:
+    """MCP clients see the requested list-journal calling convention."""
+    server = create_mcp_server("http")
+    schema = _tools_by_name(server)["list-journal"].inputSchema
+
+    assert set(schema["required"]) == {"issn", "year", "vol"}
+    assert set(schema["properties"]) == {"issn", "year", "vol"}
+
+
+def test_search_issn_schema_requires_journal_name() -> None:
+    """MCP clients see the requested search-issn calling convention."""
+    server = create_mcp_server("http")
+    schema = _tools_by_name(server)["search-issn"].inputSchema
+
+    assert schema["required"] == ["journal"]
 
 
 def test_stdio_adds_login_logout_and_profile_resource() -> None:
@@ -180,6 +221,18 @@ def test_network_lifecycle_starts_browser_and_closes_service() -> None:
 
         assert service.network_start_count == 1
         assert service.close_count == 1
+
+
+def test_network_lifecycle_runs_blocking_service_calls_off_event_loop() -> None:
+    """HTTP browser startup and shutdown do not run on the asyncio thread."""
+    service = FakeService()
+    server = create_mcp_server("http", service=service)
+    event_loop_thread = threading.get_ident()
+
+    asyncio.run(_enter_lifespan(server))
+
+    assert service.network_start_thread != event_loop_thread
+    assert service.close_thread != event_loop_thread
 
 
 def test_stdio_lifecycle_does_not_start_browser() -> None:

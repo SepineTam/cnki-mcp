@@ -13,6 +13,9 @@ from cnki_mcp.core.exceptions import (
     AuthError,
     AuthTimeout,
     CnkiMcpError,
+    IssueNotAvailable,
+    JournalLookupError,
+    JournalNotFound,
     LoginFailed,
     LoginRequired,
     MetadataError,
@@ -33,6 +36,9 @@ def test_exception_hierarchy() -> None:
         ParseError("x"),
         SearchError("x"),
         MetadataError("x"),
+        JournalLookupError("x"),
+        IssueNotAvailable("x"),
+        JournalNotFound("x"),
     ]
     for exc in exceptions:
         assert isinstance(exc, CnkiMcpError)
@@ -44,3 +50,9 @@ def test_auth_errors_inherit_auth_error() -> None:
     assert issubclass(LoginRequired, AuthError)
     assert issubclass(LoginFailed, AuthError)
     assert issubclass(AuthTimeout, AuthError)
+
+
+def test_unavailable_issue_inherits_journal_lookup_error() -> None:
+    """Callers can catch broad or precise journal lookup failures."""
+    assert issubclass(IssueNotAvailable, JournalLookupError)
+    assert issubclass(JournalNotFound, JournalLookupError)

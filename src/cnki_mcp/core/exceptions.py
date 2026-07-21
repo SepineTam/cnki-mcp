@@ -46,6 +46,18 @@ class MetadataError(CnkiMcpError):
     """Raised when metadata retrieval fails."""
 
 
+class JournalLookupError(CnkiMcpError):
+    """Raised when a journal issue request cannot be completed."""
+
+
+class JournalNotFound(JournalLookupError):
+    """Raised when an exact journal cannot be resolved."""
+
+
+class IssueNotAvailable(JournalLookupError):
+    """Raised when a requested journal year or issue is unavailable."""
+
+
 class DownloadError(CnkiMcpError):
     """Raised when full-text download fails."""
 
@@ -60,5 +72,8 @@ __all__ = [
     "ParseError",
     "SearchError",
     "MetadataError",
+    "JournalLookupError",
+    "JournalNotFound",
+    "IssueNotAvailable",
     "DownloadError",
 ]

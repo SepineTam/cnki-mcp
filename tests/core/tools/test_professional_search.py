@@ -173,6 +173,28 @@ def test_apply_sort_clicks_professional_result_control() -> None:
     page.wait_for_timeout.assert_called_once_with(3000)
 
 
+def test_turn_to_page_passes_wait_argument_by_keyword() -> None:
+    """Playwright receives the page value through its keyword-only arg."""
+    page = MagicMock()
+    page.evaluate.side_effect = ["first result", True]
+
+    assert professional_search._turn_to_page(page, 2) is True
+
+    page.wait_for_function.assert_called_once_with(
+        """(payload) => {
+                const current = document.querySelector("#curPageHid");
+                const firstRow = document.querySelector(
+                    "#gridTable tbody tr, .result-table-list tbody tr"
+                );
+                const signature = firstRow ? firstRow.innerText.trim() : "";
+                return current && current.value === payload.targetPage &&
+                    signature && signature !== payload.previousSignature;
+            }""",
+        arg={"targetPage": "2", "previousSignature": "first result"},
+        timeout=professional_search.PAGE_LOAD_TIMEOUT_SECONDS * 1000,
+    )
+
+
 def test_submit_accepts_explicit_empty_result_page() -> None:
     """A valid zero-match search returns normally instead of timing out."""
     page = MagicMock()

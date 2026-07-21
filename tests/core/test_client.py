@@ -17,7 +17,7 @@ import pytest
 
 from cnki_mcp.core import config
 from cnki_mcp.core.client import CnkiClient
-from cnki_mcp.core.models import Article, SearchResult
+from cnki_mcp.core.models import Article, JournalIssue, SearchResult
 from cnki_mcp.core.retrieval.models import CnkiQuery, MetadataLookupResult
 
 
@@ -129,6 +129,49 @@ def test_get_metadata_ensures_login_and_calls_tool(
     mock_ensure_login.assert_called_once()
     mock_metadata.assert_called_once_with("aid", profile="profile1")
     assert article.title == "Article"
+
+
+@patch("cnki_mcp.core.client.ensure_login")
+@patch("cnki_mcp.core.client.journal.run")
+def test_list_journal_ensures_login_and_calls_tool(
+    mock_journal: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """The facade exposes issue listing by its unique ISSN."""
+    mock_journal.return_value = JournalIssue(
+        name="世界经济",
+        year=2026,
+        issue="01",
+    )
+    client = CnkiClient(profile="profile1")
+
+    result = client.list_journal(issn="1002-9621", year=2026, vol=1)
+
+    mock_ensure_login.assert_called_once()
+    mock_journal.assert_called_once_with(
+        issn="1002-9621",
+        year=2026,
+        vol=1,
+        profile="profile1",
+    )
+    assert result.issue == "01"
+
+
+@patch("cnki_mcp.core.client.ensure_login")
+@patch("cnki_mcp.core.client.journal.search_issn")
+def test_search_issn_ensures_login_and_calls_tool(
+    mock_search_issn: MagicMock,
+    mock_ensure_login: MagicMock,
+) -> None:
+    """The facade resolves a journal name to the requested mapping."""
+    mock_search_issn.return_value = {"世界经济": "1002-9621"}
+    client = CnkiClient(profile="profile1")
+
+    result = client.search_issn(journal="世界经济")
+
+    mock_ensure_login.assert_called_once()
+    mock_search_issn.assert_called_once_with("世界经济", profile="profile1")
+    assert result == {"世界经济": "1002-9621"}
 
 
 @patch("cnki_mcp.core.client.ensure_login")
