@@ -19,7 +19,7 @@ from typing import Any
 from playwright.sync_api import TimeoutError, sync_playwright
 
 from . import config
-from .exceptions import AuthTimeout, LoginFailed
+from .exceptions import AuthTimeout, LoginFailed, LoginRequired
 from .models import AuthState, LoginResult
 
 # Selectors that indicate a logged-in CNKI session on the homepage.
@@ -33,6 +33,8 @@ _LOGIN_SELECTORS = [
     ".name-logged",
 ]
 
+_INIT_COMMAND = "cnki-mcp init"
+
 
 def get_profile_path(profile: str | None = None) -> Path:
     """Return the profile directory path without creating it.
@@ -44,6 +46,32 @@ def get_profile_path(profile: str | None = None) -> Path:
         Path to the profile directory.
     """
     return config.get_profile_path(profile)
+
+
+def require_profile(profile: str | None = None) -> str:
+    """Return an existing profile or explain how to initialize one."""
+    profiles = list_profiles()
+    if not profiles:
+        raise LoginRequired(
+            f"No CNKI profile found. Run '{_INIT_COMMAND}' first."
+        )
+
+    if profile is not None:
+        resolved_profile = config.validate_profile_name(profile)
+        if resolved_profile not in profiles:
+            raise LoginRequired(
+                f"Profile '{resolved_profile}' does not exist. Run "
+                f"'{_INIT_COMMAND} --profile {resolved_profile}' first."
+            )
+        return resolved_profile
+
+    resolved_profile = config.get_default_profile()
+    if resolved_profile not in profiles:
+        raise LoginRequired(
+            f"Default profile '{resolved_profile}' does not exist. Run "
+            f"'{_INIT_COMMAND}' first."
+        )
+    return resolved_profile
 
 
 def _save_context_state(context: Any, profile: str | None = None) -> None:
@@ -210,7 +238,8 @@ def login(
                 timeout=config.PAGE_LOAD_TIMEOUT_SECONDS * 1000,
             )
             print(
-                "请在弹出的浏览器窗口中完成学校/机构认证，完成后将自动保存登录状态。",
+                "Complete your school or institution authentication in the "
+                "browser. The login state will be saved automatically.",
                 file=sys.stderr,
             )
 
@@ -345,6 +374,7 @@ def set_default_profile(profile: str) -> None:
 
 __all__ = [
     "get_profile_path",
+    "require_profile",
     "login",
     "logout",
     "ensure_login",

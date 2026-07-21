@@ -10,6 +10,7 @@
 """Tests for the unified cnki-mcp CLI."""
 
 import json
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,16 @@ from cnki_mcp.cli.main import _format_output, main
 from cnki_mcp.core.exceptions import CnkiMcpError
 from cnki_mcp.core.models import Article, AuthState, LoginResult, SearchResult
 from cnki_mcp.core.retrieval.models import MetadataLookupResult
+
+
+@pytest.fixture(autouse=True)
+def initialized_profile() -> Iterator[None]:
+    """Make existing CLI tests run with an initialized profile."""
+    with patch(
+        "cnki_mcp.cli.main.auth.list_profiles",
+        return_value=["default", "profile1", "school"],
+    ):
+        yield
 
 
 def test_format_output_json() -> None:
@@ -47,6 +58,7 @@ def test_help_uses_unified_program_name(capsys) -> None:
     assert "usage: cnki-mcp" in help_text
     assert "serve" in help_text
     assert "tool" in help_text
+    assert "init" in help_text
     assert "login" in help_text
     assert "logout" in help_text
 
@@ -72,6 +84,66 @@ def test_no_arguments_start_default_http_server(
         "http", host="127.0.0.1", port=7788
     )
     mock_server.run.assert_called_once_with(transport="streamable-http")
+
+
+def test_no_profile_tells_user_to_initialize(capsys) -> None:
+    """Commands explain how to initialize instead of opening a browser."""
+    with patch("cnki_mcp.cli.main.auth.list_profiles", return_value=[]):
+        assert main(["tool", "search", "query"]) == 1
+
+    error = capsys.readouterr().err
+    assert "cnki-mcp init" in error
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+@patch("cnki_mcp.cli.main.auth.set_default_profile")
+def test_init_uses_explicit_profile_without_prompt(
+    mock_set_default: MagicMock,
+    mock_client_cls: MagicMock,
+    capsys,
+) -> None:
+    """An explicit init profile logs in and becomes the default."""
+    client = mock_client_cls.return_value
+    client.login.return_value = LoginResult(
+        success=True,
+        message="login successful",
+        auth_state=AuthState(is_logged_in=True, profile="school"),
+    )
+
+    assert main(["init", "--profile", "school"]) == 0
+
+    mock_client_cls.assert_called_once_with(profile="school")
+    client.login.assert_called_once()
+    mock_set_default.assert_called_once_with("school")
+    output = json.loads(capsys.readouterr().out)
+    assert output["profile"] == "school"
+
+
+@patch("cnki_mcp.cli.main.CnkiClient")
+@patch("cnki_mcp.cli.main.auth.set_default_profile")
+@patch("builtins.input", return_value="")
+def test_init_empty_response_uses_default_profile(
+    mock_input: MagicMock,
+    mock_set_default: MagicMock,
+    mock_client_cls: MagicMock,
+    capsys,
+) -> None:
+    """Pressing Enter at the init prompt selects the default name."""
+    client = mock_client_cls.return_value
+    client.login.return_value = LoginResult(
+        success=True,
+        message="login successful",
+        auth_state=AuthState(is_logged_in=True, profile="default"),
+    )
+
+    assert main(["init"]) == 0
+
+    mock_input.assert_called_once_with()
+    mock_client_cls.assert_called_once_with(profile="default")
+    mock_set_default.assert_called_once_with("default")
+    captured = capsys.readouterr()
+    assert "Profile name [default]:" in captured.err
+    assert json.loads(captured.out)["profile"] == "default"
 
 
 @patch("cnki_mcp.cli.main.create_mcp_server")

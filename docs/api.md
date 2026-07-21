@@ -94,6 +94,17 @@ CF=被引频次
 
 项目只提供一个 `cnki-mcp` 命令。直接运行会启动默认 HTTP MCP Server：
 
+首次使用需要初始化浏览器 Profile：
+
+```bash
+uv run cnki-mcp init
+uv run cnki-mcp init --profile school
+```
+
+不传 `--profile` 时会询问名称，直接回车使用 `default`。初始化成功后会自动设为
+默认 Profile。没有任何 Profile 时，其他 CLI 命令和 MCP Server 会提示先运行
+`cnki-mcp init`。
+
 ```bash
 uv run cnki-mcp
 uv run cnki-mcp serve --transport http --host 127.0.0.1 --port 7788

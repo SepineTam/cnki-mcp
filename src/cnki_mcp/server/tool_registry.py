@@ -46,8 +46,9 @@ class McpToolService:
 
     def start_network(self) -> None:
         """Ensure login and start the browser used by a network server."""
-        auth.ensure_login(profile=None)
-        self.worker.start(profile=None)
+        profile = auth.require_profile()
+        auth.ensure_login(profile=profile)
+        self.worker.start(profile=profile)
 
     def close(self) -> None:
         """Close the browser while preserving persisted login state."""
@@ -220,7 +221,7 @@ class McpToolService:
 
     def login(self, profile: str | None = None) -> dict[str, Any]:
         """Log in or select a profile, then start its persistent browser."""
-        resolved_profile = profile or auth.get_default_profile()
+        resolved_profile = auth.require_profile(profile)
         if (
             self.worker.is_running
             and self.worker.current_profile == resolved_profile

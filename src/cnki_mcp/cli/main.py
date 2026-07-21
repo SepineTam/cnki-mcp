@@ -17,6 +17,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from urllib.parse import urlparse
 
+from ..core import auth, config
 from ..core.client import CnkiClient
 from ..core.exceptions import CnkiMcpError
 from ..core.tools.professional_search import PROFESSIONAL_SEARCH_GUIDE
@@ -101,6 +102,13 @@ def _build_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {_package_version()}",
     )
     commands = parser.add_subparsers(dest="command")
+
+    init_parser = commands.add_parser(
+        "init",
+        help="Initialize a CNKI browser profile",
+    )
+    _add_profile_option(init_parser)
+    _add_output_option(init_parser)
 
     serve_parser = commands.add_parser("serve", help="Start the MCP server")
     serve_parser.add_argument(
@@ -196,6 +204,42 @@ def _run_server(transport: str, host: str, port: int) -> int:
     return 0
 
 
+def _prompt_profile_name() -> str:
+    """Prompt until the user provides a valid profile name."""
+    while True:
+        print("Profile name [default]: ", end="", file=sys.stderr, flush=True)
+        try:
+            value = input().strip()
+        except EOFError:
+            value = ""
+        profile = value or "default"
+        try:
+            return config.validate_profile_name(profile)
+        except ValueError:
+            print(
+                "Invalid profile name. Use only letters, numbers, hyphens, "
+                "and underscores.",
+                file=sys.stderr,
+            )
+
+
+def _run_init(profile: str | None) -> dict[str, Any]:
+    """Initialize one profile and make it the default."""
+    resolved_profile = (
+        config.validate_profile_name(profile)
+        if profile is not None
+        else _prompt_profile_name()
+    )
+    client = CnkiClient(profile=resolved_profile)
+    result = client.login()
+    auth.set_default_profile(resolved_profile)
+    return {
+        "success": result.success,
+        "message": "profile initialized and set as default",
+        "profile": resolved_profile,
+    }
+
+
 def _search_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     """Collect explicitly configured search options."""
     kwargs: dict[str, Any] = {"limit": args.limit}
@@ -264,36 +308,41 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(raw_args)
 
-    if args.command is None:
-        return _run_server("http", DEFAULT_HOST, DEFAULT_PORT)
-    if args.command == "serve":
-        _validate_serve_args(parser, args, raw_args)
-        return _run_server(args.transport, args.host, args.port)
-
     try:
-        if args.command == "tool" and args.tool_command == "search":
-            data = _run_search(parser, args)
-        elif args.command == "tool" and args.tool_command == "info":
-            data = _run_info(parser, args)
-        elif args.command == "login":
-            client = CnkiClient(profile=args.profile)
-            result = client.login()
-            data = {
-                "success": result.success,
-                "message": result.message,
-                "profile": result.auth_state.profile,
-            }
-        elif args.command == "logout":
-            client = CnkiClient(profile=args.profile)
-            client.logout()
-            data = {
-                "success": True,
-                "message": "logged out",
-                "profile": client.current_profile,
-            }
+        if args.command == "init":
+            data = _run_init(args.profile)
         else:
-            parser.error("unknown command")
-    except CnkiMcpError as exc:
+            profile = getattr(args, "profile", None)
+            auth.require_profile(profile)
+
+            if args.command is None:
+                return _run_server("http", DEFAULT_HOST, DEFAULT_PORT)
+            if args.command == "serve":
+                _validate_serve_args(parser, args, raw_args)
+                return _run_server(args.transport, args.host, args.port)
+            if args.command == "tool" and args.tool_command == "search":
+                data = _run_search(parser, args)
+            elif args.command == "tool" and args.tool_command == "info":
+                data = _run_info(parser, args)
+            elif args.command == "login":
+                client = CnkiClient(profile=args.profile)
+                result = client.login()
+                data = {
+                    "success": result.success,
+                    "message": result.message,
+                    "profile": result.auth_state.profile,
+                }
+            elif args.command == "logout":
+                client = CnkiClient(profile=args.profile)
+                client.logout()
+                data = {
+                    "success": True,
+                    "message": "logged out",
+                    "profile": client.current_profile,
+                }
+            else:
+                parser.error("unknown command")
+    except (CnkiMcpError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

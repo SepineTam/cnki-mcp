@@ -13,6 +13,9 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
+from cnki_mcp.core.exceptions import LoginRequired
 from cnki_mcp.core.models import Article, AuthState, SearchResult
 from cnki_mcp.server.search_cache import SearchResultCache
 from cnki_mcp.server.tool_registry import McpToolService
@@ -78,6 +81,15 @@ def _search_result() -> SearchResult:
         source="世界经济文汇",
         url="https://kns.cnki.net/kcms2/article/abstract?v=article-1",
     )
+
+
+@patch("cnki_mcp.server.tool_registry.auth.list_profiles", return_value=[])
+def test_network_start_requires_an_initialized_profile(_: Any) -> None:
+    """Network MCP startup directs first-time users to the init command."""
+    service = McpToolService(worker=FakeWorker([]), cache=SearchResultCache())
+
+    with pytest.raises(LoginRequired, match="cnki-mcp init"):
+        service.start_network()
 
 
 def test_easy_search_returns_url_and_caches_full_result() -> None:
@@ -244,9 +256,11 @@ def test_get_info_by_detail_preserves_other_results_on_one_failure(
     }
 
 
+@patch("cnki_mcp.server.tool_registry.auth.require_profile", return_value="default")
 @patch("cnki_mcp.server.tool_registry.auth.ensure_login")
 def test_service_network_start_and_close_follow_worker_lifetime(
     mock_ensure_login: Any,
+    mock_require_profile: Any,
 ) -> None:
     """The service delegates process-level browser ownership to its worker."""
     worker = FakeWorker([])
@@ -257,14 +271,19 @@ def test_service_network_start_and_close_follow_worker_lifetime(
     service.start_network()
     service.close()
 
-    mock_ensure_login.assert_called_once_with(profile=None)
-    assert worker.started_profiles == [None]
+    mock_require_profile.assert_called_once_with()
+    mock_ensure_login.assert_called_once_with(profile="default")
+    assert worker.started_profiles == ["default"]
     assert worker.close_count == 1
     assert len(cache) == 0
 
 
+@patch("cnki_mcp.server.tool_registry.auth.require_profile", return_value="school")
 @patch("cnki_mcp.server.tool_registry.auth.ensure_login")
-def test_stdio_login_starts_selected_profile(mock_ensure_login: Any) -> None:
+def test_stdio_login_starts_selected_profile(
+    mock_ensure_login: Any,
+    mock_require_profile: Any,
+) -> None:
     """stdio login opens the persistent browser for the resolved profile."""
     mock_ensure_login.return_value = AuthState(
         is_logged_in=True,
@@ -275,14 +294,17 @@ def test_stdio_login_starts_selected_profile(mock_ensure_login: Any) -> None:
 
     result = service.login("school")
 
+    mock_require_profile.assert_called_once_with("school")
     mock_ensure_login.assert_called_once_with(profile="school")
     assert worker.started_profiles == ["school"]
     assert result == {"success": True, "profile": "school"}
 
 
+@patch("cnki_mcp.server.tool_registry.auth.require_profile", return_value="school")
 @patch("cnki_mcp.server.tool_registry.auth.ensure_login")
 def test_stdio_login_is_idempotent_for_active_profile(
     mock_ensure_login: Any,
+    mock_require_profile: Any,
 ) -> None:
     """Repeated login does not open the same persistent profile twice."""
     worker = FakeWorker([])
@@ -291,6 +313,7 @@ def test_stdio_login_is_idempotent_for_active_profile(
 
     result = service.login("school")
 
+    mock_require_profile.assert_called_once_with("school")
     mock_ensure_login.assert_not_called()
     assert worker.started_profiles == []
     assert result == {"success": True, "profile": "school"}

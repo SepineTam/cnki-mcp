@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cnki_mcp.core import auth, config
-from cnki_mcp.core.exceptions import AuthTimeout, LoginFailed
+from cnki_mcp.core.exceptions import AuthTimeout, LoginFailed, LoginRequired
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +57,25 @@ def test_set_default_profile_persists() -> None:
     """set_default_profile writes config.json."""
     auth.set_default_profile("profile2")
     assert auth.get_default_profile() == "profile2"
+
+
+def test_require_profile_rejects_empty_environment() -> None:
+    """Missing profiles direct the user to the init command."""
+    with pytest.raises(LoginRequired, match="cnki-mcp init"):
+        auth.require_profile()
+
+
+def test_require_profile_returns_default_profile() -> None:
+    """An initialized default profile is returned unchanged."""
+    config.set_default_profile("school")
+    assert auth.require_profile() == "school"
+
+
+def test_require_profile_rejects_unknown_explicit_profile() -> None:
+    """An unknown explicit profile gets a targeted init command."""
+    config.ensure_profile_dir("school")
+    with pytest.raises(LoginRequired, match="init --profile other"):
+        auth.require_profile("other")
 
 
 def test_logout_removes_state_files() -> None:
