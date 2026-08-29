@@ -1,6 +1,6 @@
 [project]
 name = "cnki-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server and CLI for CNKI search and metadata"
 readme = "README.md"
 keywords = ["cnki", "mcp", "cli", "academic", "papers", "metadata"]
@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "mcp[cli]>=1.28.1",
+    "mcp[cli]>=1.28.1,<2.0",
     "playwright>=1.40.0",
 ]
 
