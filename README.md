@@ -54,6 +54,21 @@ uv run cnki-mcp tool issn --journal "世界经济"
 知网期刊导航页。工具每次都会通过 ISSN 重新定位期刊并获取当次有效的页面地址，
 不会保存其中会失效的 `p` 参数。
 
+## 通过 Python 使用
+该项目提供了 Python API 供学习参考：
+
+```python
+# pip install cnki-mcp
+
+from cnki_mcp import CnkiClient
+
+with CnkiClient(profile="profile1") as client:
+    results = client.search(
+        "TI='生态' and KY='生态文明'",
+        sort_by="date",
+    )
+```
+
 ## 文档
 
 - [Python API 与专业检索式](docs/api.md)
