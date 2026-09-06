@@ -111,6 +111,8 @@ LABEL_ALIASES: dict[str, list[str]] = {
     "doi": ["DOI"],
 }
 
+ORGAN_LINK_MARKER = "/organ/detail"
+
 
 def _parse_text(page: Page, selectors: list[str]) -> str | None:
     """Return the first non-empty text matching any selector."""
@@ -136,6 +138,27 @@ def _parse_list(page: Page, selectors: list[str]) -> list[str]:
             texts = [text for text in texts if text]
             if texts:
                 return texts
+        except Error:
+            continue
+    return []
+
+
+def _parse_link_list(
+    page: Page,
+    selectors: list[str],
+) -> list[tuple[str, str]]:
+    """Return (text, href) pairs from the first selector with matches."""
+    for selector in selectors:
+        try:
+            elements = page.query_selector_all(selector)
+            pairs = []
+            for element in elements:
+                text = element.inner_text().strip()
+                if not text:
+                    continue
+                pairs.append((text, element.get_attribute("href") or ""))
+            if pairs:
+                return pairs
         except Error:
             continue
     return []
@@ -308,8 +331,15 @@ def parse(page: Page, *, url: str | None = None) -> Article:
         raise ParseError("could not extract title from detail page")
 
     article_id = _extract_article_id(page, url=url) or ""
-    raw_authors = _dedupe(_parse_list(page, SELECTORS["authors"]))
+    author_links = _parse_link_list(page, SELECTORS["authors"])
+    organ_institutions = _dedupe(
+        [text for text, href in author_links if ORGAN_LINK_MARKER in href]
+    )
+    raw_authors = _dedupe(
+        [text for text, href in author_links if ORGAN_LINK_MARKER not in href]
+    )
     authors, author_institutions = _split_authors_and_institutions(raw_authors)
+    author_institutions = _dedupe(organ_institutions + author_institutions)
     if len(authors) == 1:
         authors = _split_people(authors[0]) or authors
     institution = _parse_text(page, SELECTORS["institution"])

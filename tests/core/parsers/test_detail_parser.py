@@ -102,6 +102,37 @@ def test_parse_html_returns_kns_article_metadata() -> None:
     assert article.download_url is None
 
 
+def test_parse_html_separates_organ_links_from_authors() -> None:
+    """KNS organ links inside the author block are parsed as institutions."""
+    html = """
+    <html>
+      <body>
+        <div class="wxTitle">
+          <h1>乡镇行政区划调整的人口集聚效应:以撤镇设街道为例</h1>
+        </div>
+        <h3 class="author" id="authorpart">
+          <span>
+            <a href="https://kns.cnki.net/kcms2/author/detail?v=aaa">张同斌</a>
+          </span>
+          <span>
+            <a href="https://kns.cnki.net/kcms2/author/detail?v=bbb">付婷婷</a>
+          </span>
+        </h3>
+        <h3 class="author">
+          <span>
+            <a href="https://kns.cnki.net/kcms2/organ/detail?v=ccc">
+              东北财经大学经济学院
+            </a>
+          </span>
+        </h3>
+      </body>
+    </html>
+    """
+    article = parse_html(html)
+    assert article.authors == ["张同斌", "付婷婷"]
+    assert article.institution == "东北财经大学经济学院"
+
+
 def test_parse_html_reads_current_top_tip_publication_metadata() -> None:
     """The current detail-page top tip fills year, volume, issue, and pages."""
     html = """
