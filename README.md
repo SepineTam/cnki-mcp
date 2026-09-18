@@ -1,10 +1,25 @@
 # cnki-mcp
 An MCP server for reach CNKI. 
 
+[![PyPI version](https://img.shields.io/pypi/v/cnki-mcp.svg)](https://pypi.org/project/cnki-mcp/)
+[![PyPI Downloads](https://static.pepy.tech/badge/cnki-mcp)](https://pepy.tech/projects/cnki-mcp)
+[![License](https://img.shields.io/github/license/sepinetam/cnki-mcp)](LICENSE)
+
 > 免责声明：该项目仅为个人学习项目，且仅供学习参考。 
 > 该项目不隶属任何公司、机构，与中国知网（下简称为知网或CNKI）无任何所属关系。 
 > 该项目不应用于非法手段，包括但不限于：批量访问知网进行搜索，以非正规途径获取知网论文，利用该项目进行违法违规的行为。 
 > 如有上述行为，本项目不构成任何因果利害关系，由使用者自行负责。最终解释权归本项目所有。 
+
+## 快速开始
+本项目提供了配套的 Skill，且同时支持 MCP，CLI，Python API 等多种使用方式，以便为研究者的 Agent 助理快速稳定地使用中国知网搜索论文查找论文。
+
+如果你是人类研究者，将下面这句话发送给你的 Agent 即可：
+```plain text
+帮我从 GitHub 上安装 SepineTam/cnki-mcp 这个项目的 skill，subagents 等，并通过命令行的形式初始化这个项目。
+成功初始化后，去查看《世界经济》这本期刊的 ISSN 号，并告诉我这个期刊在 2025 年是否发表过任何和人才引进相关的文章。
+```
+
+如果你是 Agent，参考 [CNKI-MCP 的 Agent 安装文档](./docs/install.md)
 
 ## 首次初始化
 
@@ -71,4 +86,5 @@ with CnkiClient(profile="profile1") as client:
 
 ## 文档
 
+- [Agent 安装指南](./docs/install.md)
 - [Python API 与专业检索式](docs/api.md)

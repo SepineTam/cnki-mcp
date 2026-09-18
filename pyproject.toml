@@ -1,6 +1,6 @@
 [project]
 name = "cnki-mcp"
-version = "0.1.1"
+version = "0.2.0"
 description = "MCP server and CLI for CNKI search and metadata"
 readme = "README.md"
 keywords = ["cnki", "mcp", "cli", "academic", "papers", "metadata"]
@@ -18,6 +18,17 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.12.0",
 ]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9,<10",
+]
+
+[project.urls]
+Homepage = "https://github.com/sepinetam/cnki-mcp"
+Documentation = "https://sepinetam.github.io/cnki-mcp/"
+Repository = "https://github.com/sepinetam/cnki-mcp"
+Issues = "https://github.com/sepinetam/cnki-mcp/issues"
+Changelog = "https://github.com/sepinetam/cnki-mcp/releases"
 
 [project.scripts]
 cnki-mcp = "cnki_mcp:main"
