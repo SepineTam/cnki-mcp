@@ -1,5 +1,4 @@
-# cnki-mcp
-An MCP server for reach CNKI. 
+# CNKI-MCP: An MCP server, CLI and Skills for reach CNKI.
 
 [![PyPI version](https://img.shields.io/pypi/v/cnki-mcp.svg)](https://pypi.org/project/cnki-mcp/)
 [![PyPI Downloads](https://static.pepy.tech/badge/cnki-mcp)](https://pepy.tech/projects/cnki-mcp)
