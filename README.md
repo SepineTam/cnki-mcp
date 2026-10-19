@@ -4,6 +4,9 @@
 [![PyPI Downloads](https://static.pepy.tech/badge/cnki-mcp)](https://pepy.tech/projects/cnki-mcp)
 [![License](https://img.shields.io/github/license/sepinetam/cnki-mcp)](LICENSE)
 
+> IMPORTANT：因该项目为个人学习项目且仅供学习与参考，故此不接受**任何形式的 AI 提交的问题，代码和评论**，仅接受人工编写的代码或真实的学习使用过程中发现的问题。同时，因个人能力与精力有限，没有很多的时间去审查代码，所以针对且仅针对于本人的该项目**禁止任何形式地通过 AI 扫描代码库来生成 Issue 与 PR**。
+> （没有说 AI 写的代码不好，他写的比我好多了，但考虑多方因素这个 repo 就是禁止使用 AI 扫库发现问题或提交代码，感谢理解。）
+> 
 > 免责声明：该项目仅为个人学习项目，且仅供学习参考。 
 > 该项目不隶属任何公司、机构，与中国知网（下简称为知网或CNKI）无任何所属关系。 
 > 该项目不应用于非法手段，包括但不限于：批量访问知网进行搜索，以非正规途径获取知网论文，利用该项目进行违法违规的行为。 
