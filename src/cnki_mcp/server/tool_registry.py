@@ -10,6 +10,7 @@
 """Transport-independent implementation of CNKI MCP tools."""
 
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
 from typing import Any
 
@@ -302,7 +303,12 @@ class McpToolService:
             and self.worker.current_profile == resolved_profile
         ):
             return {"success": True, "profile": resolved_profile}
-        state = auth.ensure_login(profile=resolved_profile)
+        # Run the auth check off the event loop: FastMCP calls sync tools
+        # inline, and playwright's sync API refuses to run inside asyncio.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            state = executor.submit(
+                auth.ensure_login, profile=resolved_profile
+            ).result()
         self.worker.start(profile=state.profile)
         return {"success": True, "profile": state.profile}
 
