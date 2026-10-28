@@ -1,6 +1,6 @@
 [project]
 name = "cnki-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server and CLI for CNKI search and metadata"
 readme = "README.md"
 keywords = ["cnki", "mcp", "cli", "academic", "papers", "metadata"]
