@@ -9,8 +9,8 @@
 
 """Transport-independent implementation of CNKI MCP tools."""
 
-from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from threading import RLock
 from typing import Any
 
